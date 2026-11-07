@@ -1,0 +1,1054 @@
+{% extends 'base.html' %}
+{% block title %}Certificates · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro">
+  <div>
+    <div class="dashboard-kicker">ADMINISTRATION</div>
+    <h2>Certificate studio</h2>
+    <p>Create five certificate types, map Excel/CSV columns to the design, generate recipient drafts, then approve and dispatch them to the intended users.</p>
+  </div>
+</div>
+<div class="alert alert-info">
+  Upload a certificate background as PDF, PNG, or JPEG. Use cover areas to mask old sample details, then add editable fields. Upload a Word source to preview its text and map placeholders such as <code>&lt;Name&gt;</code>, <code>&lt;Role&gt;</code>, <code>&lt;Domain&gt;</code>, <code>&lt;Event&gt;</code>, <code>&lt;Day&gt;</code>, <code>&lt;Date&gt;</code>, and <code>&lt;Venue&gt;</code>. Each personalized Word download receives its certificate number and a unique verification QR code at the lower-left corner. Text already printed in a PDF/image is not detected automatically; place a cover area over it. Canva/CorelDRAW project files remain editable in those applications.
+</div>
+
+<section class="surface-card mb-4">
+  <h3>Create a certificate template</h3>
+  <form method="post" enctype="multipart/form-data" data-certificate-editor data-create-editor data-docx-preview-url="{{ url_for('main.certificate_template_docx_preview') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="template">
+    <input type="hidden" name="positions_json" data-positions value="{{ default_positions|tojson }}">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label" for="certificate-type">Certificate type</label>
+        <select class="form-select" id="certificate-type" name="type_name" required data-certificate-type>
+          {% for type_name in certificate_types %}
+          {% set existing = templates|selectattr('certificate_type.name', 'equalto', type_name)|list %}
+          <option value="{{ type_name }}" data-fields="{{ certificate_type_fields[type_name]|tojson|forceescape }}" data-roles="{{ certificate_role_options[type_name]|tojson|forceescape }}" {% if existing %}disabled{% endif %}>{{ type_name }}{% if existing %} · template already exists{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" data-role-label>Recipient account role</label>
+        <select class="form-select" name="recipient_role" required data-recipient-role></select>
+      </div>
+      <div class="col-md-4"><label class="form-label">Event name</label><input class="form-control" name="event_name" maxlength="200" value="FUTURE-TECH INNOVISION 2026" required></div>
+      <div class="col-md-4"><label class="form-label">Date</label><input class="form-control" name="event_date" maxlength="80" required></div>
+      <div class="col-md-4"><label class="form-label">Venue</label><input class="form-control" name="event_venue" maxlength="200" required></div>
+      <div class="col-md-6">
+        <label class="form-label">Certificate background (PDF, PNG, JPEG)</label>
+        <input class="form-control" type="file" name="template_file" accept=".pdf,.png,.jpg,.jpeg" required data-background-file>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Word source file (optional)</label>
+        <input class="form-control" type="file" name="template_docx" accept=".docx" data-docx-file>
+        <div class="form-text">Choose the DOCX to preview its text and map placeholders. Export the design as PDF/image for PDF certificates.</div>
+        <div class="certificate-docx-preview mt-2" data-docx-preview aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end my-3">
+      <button type="button" class="btn btn-outline-primary" data-add-text>Add text</button>
+      <label class="form-label mb-0">Selected text<input class="form-control" maxlength="500" data-text-value></label>
+      <label class="form-label mb-0">Font<select class="form-select" data-text-font><option>Helvetica</option><option>Times</option><option>Courier</option></select></label>
+      <label class="form-label mb-0">Size<input class="form-control" type="number" min="6" max="48" value="24" data-text-size></label>
+      <label class="form-label mb-0">Color<input class="form-control form-control-color" type="color" value="#20242c" data-text-color></label>
+      <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-text-bold> Bold</label>
+      <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-text-italic> Italic</label>
+      <label class="form-label mb-0">Align<select class="form-select" data-text-align><option value="center">Center</option><option value="left">Left</option><option value="right">Right</option></select></label>
+      <label class="form-label mb-0">Insert field<select class="form-select" data-placeholder><option value="">Choose field</option><option value="{{ '{{recipient_name}}' }}">Name</option><option value="{{ '{{event_name}}' }}">Event Name</option><option value="{{ '{{domain_name}}' }}">Domain Name</option><option value="{{ '{{team_id}}' }}">Team ID</option><option value="{{ '{{project_title}}' }}">Title</option><option value="{{ '{{event_date}}' }}">Date</option><option value="{{ '{{event_venue}}' }}">Venue</option><option value="{{ '{{certificate_id}}' }}">Certificate Number</option></select></label>
+    </div>
+    <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end mb-3">
+      <label class="form-label mb-0">CSV/Excel field style (PDF)<select class="form-select" data-field-style-target></select></label>
+      <label class="form-label mb-0">Font<select class="form-select" data-field-style-font><option>Helvetica</option><option>Times</option><option>Courier</option></select></label>
+      <label class="form-label mb-0">Font size<input class="form-control" type="number" min="6" max="48" value="24" data-field-style-size></label>
+      <label class="form-label mb-0">Text color<input class="form-control form-control-color" type="color" value="#20242c" data-field-style-color></label>
+      <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-field-style-bold> Bold</label>
+      <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-field-style-italic> Italic</label>
+      <label class="form-label mb-0">Align<select class="form-select" data-field-style-align><option value="center">Center</option><option value="left">Left</option><option value="right">Right</option></select></label>
+    </div>
+    <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end mb-3">
+      <button type="button" class="btn btn-outline-primary" data-add-cover>Add cover area</button>
+      <label class="form-label mb-0">Cover color<input class="form-control form-control-color" type="color" value="#ffffff" data-cover-color></label>
+      <label class="form-label mb-0">Cover width (%)<input class="form-control" type="number" min="0.1" max="100" step="0.1" value="20" data-cover-width></label>
+      <label class="form-label mb-0">Cover height (%)<input class="form-control" type="number" min="0.1" max="100" step="0.1" value="6" data-cover-height></label>
+    </div>
+    <div class="certificate-stage mb-3" data-stage data-empty="true">
+      <div class="certificate-art" data-art></div>
+      <div class="certificate-markers" data-markers></div>
+    </div>
+    <div class="form-text mb-3">Drag the QR marker to set its position for both PDF and Word output. The certificate number is placed directly below the QR. Select a CSV/Excel field to set its font, color, bold, and italic styling in the PDF; DOCX placeholders have the same per-field styling options in the text preview.</div>
+    <button class="btn btn-primary">Save draft template</button>
+  </form>
+</section>
+
+<section class="surface-card mb-4">
+  <h3>Templates</h3>
+  {% for template in templates %}
+  <details class="border rounded p-3 mb-3">
+    <summary class="fw-semibold">{{ template.certificate_type.name }} · {{ template.event_name }} · {% if template.approved %}Approved{% else %}Draft{% endif %}</summary>
+    <div class="row g-3 mt-2">
+      <div class="col-lg-7">
+        <form method="post" action="{{ url_for('main.edit_certificate_template', template_id=template.id) }}" enctype="multipart/form-data" data-certificate-editor data-edit-editor data-docx-preview-url="{{ url_for('main.certificate_template_docx_preview') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="positions_json" data-positions value="{{ template.positions_json }}">
+          <input type="hidden" value="{{ template.certificate_type.name }}" data-certificate-type data-fields="{{ certificate_type_fields[template.certificate_type.name]|tojson|forceescape }}" data-roles="{{ certificate_role_options[template.certificate_type.name]|tojson|forceescape }}">
+          <div class="row g-2">
+            <div class="col-md-4"><label class="form-label">Event name</label><input class="form-control" name="event_name" value="{{ template.event_name }}" required></div>
+            <div class="col-md-4"><label class="form-label">Date</label><input class="form-control" name="event_date" value="{{ template.event_date }}" required></div>
+            <div class="col-md-4"><label class="form-label">Venue</label><input class="form-control" name="event_venue" value="{{ template.event_venue }}" required></div>
+            <div class="col-md-6"><label class="form-label">Recipient role</label><select class="form-select" name="recipient_role" data-recipient-role data-selected-role="{{ template.recipient_role }}"></select></div>
+            <div class="col-md-6"><label class="form-label">Replace background (optional)</label><input class="form-control" type="file" name="template_file" accept=".pdf,.png,.jpg,.jpeg" data-background-file></div>
+            <div class="col-md-6"><label class="form-label">Replace Word source (optional)</label><input class="form-control" type="file" name="template_docx" accept=".docx" data-docx-file><div class="form-text">Preview the DOCX text, map its placeholders, and save. Each Word download receives its recipient details and QR code.</div><div class="certificate-docx-preview mt-2" data-docx-preview aria-live="polite"></div></div>
+          </div>
+          <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end my-3">
+            <button type="button" class="btn btn-outline-primary" data-add-text>Add text</button>
+            <label class="form-label mb-0">Selected text<input class="form-control" maxlength="500" data-text-value></label>
+            <label class="form-label mb-0">Font<select class="form-select" data-text-font><option>Helvetica</option><option>Times</option><option>Courier</option></select></label>
+            <label class="form-label mb-0">Size<input class="form-control" type="number" min="6" max="48" value="24" data-text-size></label>
+            <label class="form-label mb-0">Color<input class="form-control form-control-color" type="color" value="#20242c" data-text-color></label>
+            <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-text-bold> Bold</label>
+            <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-text-italic> Italic</label>
+            <label class="form-label mb-0">Align<select class="form-select" data-text-align><option value="center">Center</option><option value="left">Left</option><option value="right">Right</option></select></label>
+            <label class="form-label mb-0">Insert field<select class="form-select" data-placeholder><option value="">Choose field</option><option value="{{ '{{recipient_name}}' }}">Name</option><option value="{{ '{{event_name}}' }}">Event Name</option><option value="{{ '{{domain_name}}' }}">Domain Name</option><option value="{{ '{{team_id}}' }}">Team ID</option><option value="{{ '{{project_title}}' }}">Title</option><option value="{{ '{{event_date}}' }}">Date</option><option value="{{ '{{event_venue}}' }}">Venue</option><option value="{{ '{{certificate_id}}' }}">Certificate Number</option></select></label>
+          </div>
+          <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end mb-3">
+            <label class="form-label mb-0">CSV/Excel field style (PDF)<select class="form-select" data-field-style-target></select></label>
+            <label class="form-label mb-0">Font<select class="form-select" data-field-style-font><option>Helvetica</option><option>Times</option><option>Courier</option></select></label>
+            <label class="form-label mb-0">Font size<input class="form-control" type="number" min="6" max="48" value="24" data-field-style-size></label>
+            <label class="form-label mb-0">Text color<input class="form-control form-control-color" type="color" value="#20242c" data-field-style-color></label>
+            <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-field-style-bold> Bold</label>
+            <label class="form-check mb-2"><input class="form-check-input" type="checkbox" data-field-style-italic> Italic</label>
+            <label class="form-label mb-0">Align<select class="form-select" data-field-style-align><option value="center">Center</option><option value="left">Left</option><option value="right">Right</option></select></label>
+          </div>
+          <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end mb-3">
+            <button type="button" class="btn btn-outline-primary" data-add-cover>Add cover area</button>
+            <label class="form-label mb-0">Cover color<input class="form-control form-control-color" type="color" value="#ffffff" data-cover-color></label>
+            <label class="form-label mb-0">Cover width (%)<input class="form-control" type="number" min="0.1" max="100" step="0.1" value="20" data-cover-width></label>
+            <label class="form-label mb-0">Cover height (%)<input class="form-control" type="number" min="0.1" max="100" step="0.1" value="6" data-cover-height></label>
+          </div>
+          <div class="certificate-stage mb-3" data-stage data-background-url="{{ url_for('main.certificate_template_background_file', template_id=template.id) }}" data-background-file-name="{{ template.background_file }}">
+            <div class="certificate-art" data-art></div>
+            <div class="certificate-markers" data-markers></div>
+          </div>
+          <button class="btn btn-primary">Save and review</button>
+        </form>
+        {% if template.document_file %}<a class="btn btn-sm btn-outline-secondary mt-2" href="{{ url_for('main.certificate_template_document_file', template_id=template.id) }}">Download Word source</a>{% endif %}
+        <form method="post" action="{{ url_for('main.approve_certificate_template', template_id=template.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-success mt-2" {% if template.approved %}disabled{% endif %}>Approve template</button>
+        </form>
+        <form method="post" action="{{ url_for('main.delete_certificate_template', template_id=template.id) }}" class="d-inline" onsubmit="return confirm('Delete this template? Issued certificates keep their saved layout.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-danger mt-2">Delete template</button>
+        </form>
+      </div>
+    </div>
+  </details>
+  {% else %}<p class="muted">No templates yet. Create one above for each certificate type.</p>{% endfor %}
+</section>
+
+<section class="surface-card mb-4">
+  <h3>Generate and send a demo certificate</h3>
+  <p>Create one real certificate for a selected student. It is dispatched to their dashboard immediately, listed below under Generated certificates, and can be deleted there. Email is also sent when configured.</p>
+  <form method="post" action="{{ url_for('main.certificates') }}" class="row g-3 align-items-end" data-demo-certificate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="demo_issue">
+    <div class="col-md-5">
+      <label class="form-label" for="demo-certificate-template">Approved student template</label>
+      <select class="form-select" id="demo-certificate-template" name="template_id" required data-demo-template>
+        <option value="">Select a template</option>
+        {% for template in demo_templates %}
+        <option value="{{ template.id }}" data-role="{{ template.recipient_role }}">{{ template.certificate_type.name }} · {{ template.event_name }} · {{ template.recipient_role|replace('_', ' ')|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-5">
+      <label class="form-label" for="demo-certificate-user">Student account</label>
+      <select class="form-select" id="demo-certificate-user" name="user_id" required data-demo-user disabled>
+        <option value="">Select a template first</option>
+        {% for user in demo_users %}
+        <option value="{{ user.id }}" data-role="{{ user.role }}">{{ user.display_name or user.username }} · {{ user.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-success w-100" data-demo-submit {% if not demo_templates or not demo_users %}disabled{% endif %} onclick="return confirm('Generate this demo certificate and dispatch it to the selected student now?');">Generate &amp; send</button>
+    </div>
+  </form>
+</section>
+
+<section class="surface-card mb-4">
+  <h3>Excel / CSV mail merge</h3>
+  <p>Use a row per recipient. Map each spreadsheet column to the certificate fields. Generated certificates stay private until an admin approves and dispatches them to all users, a domain, or one selected account.</p>
+  <form method="post" action="{{ url_for('main.certificates') }}" enctype="multipart/form-data" data-mail-merge data-header-url="{{ url_for('main.certificate_spreadsheet_headers') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="import_csv">
+    <div class="row g-3">
+      <div class="col-md-5"><label class="form-label">Approved template</label><select class="form-select" name="template_id" required data-merge-template>{% for template in approved_templates %}<option value="{{ template.id }}" data-fields="{{ certificate_type_fields[template.certificate_type.name]|tojson|forceescape }}">{{ template.certificate_type.name }} · {{ template.event_name }}</option>{% endfor %}</select></div>
+      <div class="col-md-7"><label class="form-label">Recipients file (.xlsx or .csv)</label><input class="form-control" type="file" name="recipient_csv" accept=".xlsx,.csv" required data-merge-file></div>
+    </div>
+    <div class="small mt-2" data-merge-status aria-live="polite"></div>
+    <div class="row g-2 mt-1" data-merge-mappings></div>
+    <button class="btn btn-primary mt-3" {% if not approved_templates %}disabled{% endif %}>Generate certificate drafts</button>
+  </form>
+</section>
+
+<section class="surface-card mb-4">
+  <h3>Import finished student certificate PDFs</h3>
+  <p>Upload multiple PDFs directly or one ZIP. Name every PDF exactly with the student’s Student ID/PRN, for example <code>STUDENT123.pdf</code>. Choose whether to use all matching IDs or select recipients from the active student list, like Mailings. The system assigns each matching file to that account, adds a unique verification QR and certificate number to the lower-left of page one, and keeps certificates pending until dispatch.</p>
+  <form method="post" action="{{ url_for('main.certificates') }}" enctype="multipart/form-data" class="row g-3 align-items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="upload_files">
+    <div class="col-md-5">
+      <label class="form-label" for="certificate-import-type">Certificate type</label>
+      <select class="form-select" id="certificate-import-type" name="type_id" required>
+        {% for certificate_type in types %}
+        <option value="{{ certificate_type.id }}">{{ certificate_type.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-7">
+      <label class="form-label" for="certificate-pdf-recipient-scope">Select recipients</label>
+      <select class="form-select" id="certificate-pdf-recipient-scope" name="pdf_recipient_scope" data-pdf-recipient-scope>
+        <option value="matching">Use Student IDs from PDF filenames (all matching students)</option>
+        <option value="selected">Select recipients from active student list</option>
+      </select>
+    </div>
+    <div class="col-12" data-pdf-recipient-users-wrap hidden>
+      <label class="form-label" for="certificate-pdf-recipient-search">Find recipients</label>
+      <input class="form-control mb-2" type="search" id="certificate-pdf-recipient-search" placeholder="Search by student name, Student ID, or team" data-pdf-recipient-search disabled>
+      <div class="d-flex gap-2 mb-2">
+        <button class="btn btn-sm btn-outline-primary" type="button" data-pdf-select-visible disabled>Select visible</button>
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-pdf-clear-selection disabled>Clear selection</button>
+      </div>
+      <div class="border rounded p-2" style="max-height: 260px; overflow-y: auto" data-pdf-recipient-users>
+        {% for user in pdf_recipient_users %}
+        <label class="form-check d-flex gap-2 align-items-center mb-1" data-pdf-recipient-option data-search="{{ user.member_record.full_name }} {{ user.member_record.prn }} {{ user.member_record.team.team_code }}">
+          <input class="form-check-input mt-0" type="checkbox" name="pdf_recipient_user_ids" value="{{ user.id }}" data-pdf-recipient-checkbox disabled>
+          <span>{{ user.member_record.full_name }} · {{ user.member_record.prn }} · {{ user.member_record.team.team_code }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="form-text">Choose one or more recipients. Only selected students whose Student IDs match a PDF filename will receive a pending certificate.</div>
+    </div>
+    <div class="col-md-7">
+      <label class="form-label" for="certificate-import-files">Student PDF files or a ZIP of PDFs</label>
+      <input class="form-control" type="file" id="certificate-import-files" name="certificate_files" accept=".pdf,.zip,application/pdf,application/zip" multiple required>
+      <div class="form-text">Maximum 500 PDFs, 25 MB per PDF, and 300 MB total. Unmatched Student IDs are skipped.</div>
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary" onclick="return confirm('Import the matching student PDFs and create pending certificates?');">Import student certificates</button>
+    </div>
+  </form>
+</section>
+
+<section class="surface-card mb-4">
+  <h3>Approve and dispatch certificates</h3>
+  <p>Dispatch makes the approved certificate visible in each recipient’s login dashboard. Email is sent when SMTP and a valid recipient address are available.</p>
+  <form method="post" action="{{ url_for('main.dispatch_certificates') }}" class="row g-3 align-items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-4">
+      <label class="form-label" for="certificate-dispatch-scope">Recipients</label>
+      <select class="form-select" id="certificate-dispatch-scope" name="scope" required data-dispatch-scope>
+        <option value="all">All users with pending certificates</option>
+        <option value="domain">One technical domain</option>
+        <option value="user">One specific user</option>
+      </select>
+    </div>
+    <div class="col-md-4" data-dispatch-domain-wrap>
+      <label class="form-label" for="certificate-dispatch-domain">Domain</label>
+      <select class="form-select" id="certificate-dispatch-domain" name="domain_id">
+        {% for domain in dispatch_domains %}<option value="{{ domain.id }}">{{ domain.code }} · {{ domain.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4" data-dispatch-user-wrap>
+      <label class="form-label" for="certificate-dispatch-user">User account</label>
+      <select class="form-select" id="certificate-dispatch-user" name="user_id">
+        {% for user in dispatch_users %}<option value="{{ user.id }}">{{ user.display_name or user.username }} · {{ user.username }}</option>{% else %}<option value="">No pending recipient accounts</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12">
+      <button class="btn btn-success" {% if not dispatch_users %}disabled{% endif %} onclick="return confirm('Approve and dispatch the selected pending certificates?');">Approve and dispatch</button>
+    </div>
+  </form>
+</section>
+
+<section class="surface-card">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div><h3 class="mb-1">Generated certificates · Issued certificates</h3><p class="muted mb-0">Demo certificates sent to a student appear here immediately. Delete drafts or issued records individually, or clear the complete certificate list.</p></div>
+    {% if certs %}<form method="post" action="{{ url_for('main.delete_all_certificates') }}" onsubmit="return confirm('Delete every generated certificate? This cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-sm btn-outline-danger">Delete all certificates</button>
+    </form>{% endif %}
+  </div>
+  {% for cert in certs %}
+  <div class="member-row d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span>{{ cert.recipient_name }}{% if cert.user_id %} · {{ user_labels.get(cert.user_id, 'Student account') }}{% endif %} · {{ cert.type.name }} · {{ cert.certificate_id }} ·
+      {% if cert.dispatch_status == 'dispatched' %}<span class="badge text-bg-success">Dispatched</span>{% else %}<span class="badge text-bg-warning">Pending approval</span>{% endif %}
+    </span>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.download_certificate', certificate_id=cert.certificate_id) }}">Download PDF</a>
+      {% if cert.id in word_certificate_ids %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.download_certificate_word', certificate_id=cert.certificate_id) }}">Download Word</a>{% endif %}
+      <form method="post" action="{{ url_for('main.delete_certificate', certificate_id=cert.id) }}" onsubmit="return confirm('Delete this issued certificate?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger">Delete</button>
+      </form>
+    </div>
+  </div>
+  {% else %}<p class="muted">No certificates have been generated.</p>{% endfor %}
+</section>
+
+<style>
+  body.certificate-studio-page {
+    background: #f3f6fb !important;
+    background-image: none !important;
+    color: #17233b;
+  }
+  body.certificate-studio-page .college-banner,
+  body.certificate-studio-page .footer {
+    border-color: #d7dfeb;
+    background: #fff;
+    color: #42516a;
+  }
+  body.certificate-studio-page .college-name,
+  body.certificate-studio-page .college-subtitle { color: #17233b; }
+  body.certificate-studio-page .page-shell { color: #17233b; }
+  body.certificate-studio-page .dashboard-intro p,
+  body.certificate-studio-page .muted,
+  body.certificate-studio-page .form-text { color: #52627a !important; }
+  body.certificate-studio-page .surface-card {
+    border-color: #d7dfeb;
+    background: #fff;
+    color: #17233b;
+    box-shadow: 0 8px 24px #17233b12;
+  }
+  body.certificate-studio-page .alert-info {
+    border-color: #b7c9e4;
+    background: #eaf2ff;
+    color: #203b61;
+  }
+  body.certificate-studio-page .form-label,
+  body.certificate-studio-page .form-check-label,
+  body.certificate-studio-page label { color: #263750 !important; }
+  body.certificate-studio-page .form-control,
+  body.certificate-studio-page .form-select {
+    border-color: #b8c5d8;
+    background-color: #fff;
+    color: #17233b;
+  }
+  body.certificate-studio-page .form-control:focus,
+  body.certificate-studio-page .form-select:focus {
+    border-color: #5485d4;
+    box-shadow: 0 0 0 .2rem #5485d433;
+  }
+  .certificate-toolbar { padding: 1rem; border: 1px solid #52688e; border-radius: .6rem; background: linear-gradient(145deg, #1d2b49, #14203a); }
+  .certificate-toolbar { border-color: #cfdaea; background: #eef3fb; }
+  .certificate-toolbar .form-label,
+  .certificate-toolbar .form-check,
+  .certificate-toolbar .form-check-label,
+  body.certificate-studio-page .certificate-toolbar .form-label,
+  body.certificate-studio-page .certificate-toolbar .form-check,
+  body.certificate-studio-page .certificate-toolbar .form-check-label { color: #263750 !important; }
+  .certificate-toolbar label { min-width: 105px; }
+  .dashboard-space .certificate-toolbar .form-control,
+  .dashboard-space .certificate-toolbar .form-select { border-color: #aab8cc; background-color: #fff; color: #17233b; }
+  .dashboard-space .certificate-toolbar .form-control:focus,
+  .dashboard-space .certificate-toolbar .form-select:focus { border-color: #78b5ff; box-shadow: 0 0 0 .2rem #4d86e655; }
+  .dashboard-space .certificate-toolbar .form-check-input { border-color: #71819a; background-color: #fff; }
+  .certificate-toolbar .btn-outline-primary {
+    border-color: #315fa8;
+    background: #315fa8;
+    color: #fff;
+  }
+  .certificate-toolbar .btn-outline-primary:hover,
+  .certificate-toolbar .btn-outline-primary:focus-visible {
+    border-color: #244b89;
+    background: #244b89;
+    color: #fff;
+  }
+  .certificate-stage { position: relative; width: min(100%, 720px); aspect-ratio: 1.414 / 1; overflow: hidden; background: #fff; border: 2px solid #8496b0; border-radius: .4rem; touch-action: none; }
+  .certificate-art,.certificate-art img,.certificate-art iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: fill; }
+  .certificate-art:empty::before { content: "Upload a PDF or image to preview your certificate design"; position: absolute; inset: 0; display: grid; place-items: center; padding: 1.5rem; color: #34445d; font-size: clamp(.9rem, 2vw, 1.1rem); font-weight: 700; text-align: center; }
+  .certificate-docx-preview { max-height: 340px; overflow: auto; padding: .75rem; border: 1px solid #c8d3e2; border-radius: .5rem; background: #f7f9fc; color: #17233b; }
+  .certificate-docx-preview:empty { display: none; }
+  .certificate-docx-line { padding: .5rem 0; border-bottom: 1px solid #dfe5ee; overflow-wrap: anywhere; }
+  .certificate-docx-token { display: inline-flex; gap: .35rem; align-items: center; margin: .35rem .35rem 0 0; padding: .3rem; border-radius: .35rem; background: #e8eef8; }
+  .certificate-markers { position: absolute; inset: 0; }
+  .certificate-stage[data-empty="true"] .certificate-markers { display: none; }
+  .certificate-cover-zone { position: absolute; z-index: 1; transform: translate(-50%,-50%); border: 2px dashed #183d68; cursor: move; opacity: .82; touch-action: none; }
+  .certificate-marker { position: absolute; z-index: 2; transform: translate(-50%,-50%); cursor: move; border: 1px solid #183d68; background: rgba(255,255,255,.92); color: #10253d; border-radius: .25rem; padding: .12rem .35rem; font-size: .72rem; white-space: nowrap; touch-action: none; }
+  .certificate-marker[data-field="qr"] { width: 6%; aspect-ratio: 1; padding: 0; border: 2px dashed #183d68; border-radius: 0; background: rgba(255,255,255,.55); }
+  .certificate-custom-text { position: absolute; z-index: 3; max-width: 90%; white-space: pre-wrap; overflow-wrap: anywhere; cursor: move; transform: translate(-50%,-50%); border: 1px dashed #1769aa; background: rgba(255,255,255,.35); padding: 0 .12em; touch-action: none; }
+</style>
+<script>
+(() => {
+  const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const fieldLabels = {
+    recipient_name: 'Name', event_name: 'Event Name', domain_name: 'Domain Name',
+    team_id: 'Team ID', project_title: 'Title', event_date: 'Date',
+    event_venue: 'Venue', recipient_role: 'Role', event_day: 'Day',
+    certificate_number: 'Certificate Number', qr: 'QR',
+  };
+  const placeholders = ['recipient_name', 'event_name', 'domain_name', 'team_id', 'project_title', 'event_date', 'event_venue', 'certificate_id'];
+  const docxFieldOptions = [
+    ['recipient_name', 'Name'], ['recipient_role', 'Role'],
+    ['domain_name', 'Domain'], ['event_name', 'Event'],
+    ['event_day', 'Day'], ['event_date', 'Date'],
+    ['event_venue', 'Venue'], ['team_id', 'Team ID'],
+    ['project_title', 'Title'], ['certificate_id', 'Certificate number'],
+    ['verification_url', 'Verification URL'],
+  ];
+  const readJSON = (raw) => { try { return JSON.parse(raw || '{}'); } catch { return {}; } };
+  const dispatchScope = document.querySelector('[data-dispatch-scope]');
+  if (dispatchScope) {
+    const domainWrap = document.querySelector('[data-dispatch-domain-wrap]');
+    const userWrap = document.querySelector('[data-dispatch-user-wrap]');
+    const domainSelect = domainWrap.querySelector('select');
+    const userSelect = userWrap.querySelector('select');
+    const updateDispatchFields = () => {
+      domainWrap.hidden = dispatchScope.value !== 'domain';
+      userWrap.hidden = dispatchScope.value !== 'user';
+      domainSelect.disabled = dispatchScope.value !== 'domain';
+      userSelect.disabled = dispatchScope.value !== 'user';
+      userSelect.required = dispatchScope.value === 'user';
+      domainSelect.required = dispatchScope.value === 'domain';
+    };
+    dispatchScope.addEventListener('change', updateDispatchFields);
+    updateDispatchFields();
+  }
+  const pdfRecipientScope = document.querySelector('[data-pdf-recipient-scope]');
+  if (pdfRecipientScope) {
+    const recipientWrap = document.querySelector('[data-pdf-recipient-users-wrap]');
+    const recipientSearch = document.querySelector('[data-pdf-recipient-search]');
+    const recipientCheckboxes = Array.from(
+      recipientWrap.querySelectorAll('[data-pdf-recipient-checkbox]')
+    );
+    const recipientOptions = Array.from(
+      recipientWrap.querySelectorAll('[data-pdf-recipient-option]')
+    );
+    const selectVisibleButton = document.querySelector('[data-pdf-select-visible]');
+    const clearSelectionButton = document.querySelector('[data-pdf-clear-selection]');
+    const filterRecipients = () => {
+      const search = recipientSearch.value.trim().toLowerCase();
+      recipientOptions.forEach((option) => {
+        option.hidden = !option.dataset.search.toLowerCase().includes(search);
+      });
+    };
+    const updatePdfRecipients = () => {
+      const selected = pdfRecipientScope.value === 'selected';
+      recipientWrap.hidden = !selected;
+      recipientSearch.disabled = !selected;
+      selectVisibleButton.disabled = !selected;
+      clearSelectionButton.disabled = !selected;
+      recipientCheckboxes.forEach((checkbox) => { checkbox.disabled = !selected; });
+    };
+    recipientSearch.addEventListener('input', filterRecipients);
+    selectVisibleButton.addEventListener('click', () => {
+      recipientOptions.forEach((option) => {
+        if (!option.hidden) {
+          option.querySelector('[data-pdf-recipient-checkbox]').checked = true;
+        }
+      });
+    });
+    clearSelectionButton.addEventListener('click', () => {
+      recipientCheckboxes.forEach((checkbox) => { checkbox.checked = false; });
+    });
+    pdfRecipientScope.addEventListener('change', updatePdfRecipients);
+    updatePdfRecipients();
+  }
+  const demoTemplateSelect = document.querySelector('[data-demo-template]');
+  const demoUserSelect = document.querySelector('[data-demo-user]');
+  const demoSubmit = document.querySelector('[data-demo-submit]');
+  if (demoTemplateSelect && demoUserSelect) {
+    const updateDemoRecipients = () => {
+      const requiredRole = demoTemplateSelect.selectedOptions[0]?.dataset.role || '';
+      let available = 0;
+      Array.from(demoUserSelect.options).forEach((option) => {
+        if (!option.value) return;
+        const matches = Boolean(requiredRole) && option.dataset.role === requiredRole;
+        option.hidden = Boolean(requiredRole) && !matches;
+        option.disabled = !matches;
+        if (matches) available += 1;
+      });
+      demoUserSelect.value = '';
+      demoUserSelect.disabled = !requiredRole || available === 0;
+      if (demoSubmit) demoSubmit.disabled = !requiredRole || available === 0;
+      const prompt = demoUserSelect.options[0];
+      prompt.textContent = !requiredRole
+        ? 'Select a template first'
+        : available
+          ? 'Select a student'
+          : 'No active students for this template role';
+      prompt.disabled = true;
+    };
+    demoTemplateSelect.addEventListener('change', updateDemoRecipients);
+    updateDemoRecipients();
+  }
+
+  document.querySelectorAll('[data-certificate-editor]').forEach((form) => {
+    const typeSelect = form.querySelector('[data-certificate-type]');
+    const roleSelect = form.querySelector('[data-recipient-role]');
+    const stage = form.querySelector('[data-stage]');
+    const art = form.querySelector('[data-art]');
+    const markers = form.querySelector('[data-markers]');
+    const positionsInput = form.querySelector('[data-positions]');
+    const initial = readJSON(positionsInput.value);
+    const positions = { ...initial };
+    positions.custom_texts = Array.isArray(initial.custom_texts) ? initial.custom_texts : [];
+    positions.cover_zones = Array.isArray(initial.cover_zones) ? initial.cover_zones : [];
+    positions.docx_field_mappings = initial.docx_field_mappings || {};
+    positions.docx_field_styles = initial.docx_field_styles || {};
+    const typeOption = () => typeSelect?.tagName === 'SELECT'
+      ? typeSelect.selectedOptions[0]
+      : typeSelect;
+    const activeFields = () => {
+      const option = typeOption();
+      const raw = option?.dataset.fields;
+      return raw ? readJSON(raw) : [];
+    };
+    const fieldStyleTarget = form.querySelector('[data-field-style-target]');
+    const fieldStyleControls = {
+      font: form.querySelector('[data-field-style-font]'),
+      size: form.querySelector('[data-field-style-size]'),
+      color: form.querySelector('[data-field-style-color]'),
+      bold: form.querySelector('[data-field-style-bold]'),
+      italic: form.querySelector('[data-field-style-italic]'),
+      align: form.querySelector('[data-field-style-align]'),
+    };
+    const syncFieldStyleControls = () => {
+      const field = fieldStyleTarget?.value;
+      if (!field) return;
+      const point = positions[field] || {};
+      fieldStyleControls.font.value = point.font || 'Helvetica';
+      fieldStyleControls.size.value = point.size || 12;
+      fieldStyleControls.color.value = point.color || '#20242c';
+      fieldStyleControls.bold.checked = Boolean(point.bold);
+      fieldStyleControls.italic.checked = Boolean(point.italic);
+      fieldStyleControls.align.value = point.align || 'center';
+    };
+    const updateFieldStyleOptions = () => {
+      if (!fieldStyleTarget) return;
+      const selected = fieldStyleTarget.value;
+      const fields = activeFields().filter((field) => field !== 'qr');
+      fieldStyleTarget.replaceChildren(...fields.map((field) => {
+        const option = document.createElement('option');
+        option.value = field;
+        option.textContent = fieldLabels[field] || field;
+        return option;
+      }));
+      if (fields.includes(selected)) fieldStyleTarget.value = selected;
+      syncFieldStyleControls();
+    };
+    const updateFieldStyle = () => {
+      const field = fieldStyleTarget?.value;
+      if (!field) return;
+      const point = positions[field] || { x: 50, y: 50, size: 12 };
+      positions[field] = {
+        ...point,
+        font: fieldStyleControls.font.value,
+        size: Number(fieldStyleControls.size.value) || 12,
+        color: fieldStyleControls.color.value,
+        bold: fieldStyleControls.bold.checked,
+        italic: fieldStyleControls.italic.checked,
+        align: fieldStyleControls.align.value,
+      };
+      render();
+    };
+    const render = () => {
+      markers.replaceChildren();
+      positions.cover_zones.forEach((zone, index) => {
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = 'certificate-cover-zone';
+        marker.dataset.coverIndex = String(index);
+        marker.setAttribute('aria-label', `Cover area ${index + 1}`);
+        marker.style.left = `${zone.x}%`;
+        marker.style.top = `${zone.y}%`;
+        marker.style.width = `${zone.width}%`;
+        marker.style.height = `${zone.height}%`;
+        marker.style.backgroundColor = zone.color || '#ffffff';
+        markers.append(marker);
+      });
+      activeFields().forEach((field) => {
+        if (field === 'certificate_number') {
+          const qr = positions.qr || { x: 10, y: 90, size: 9 };
+          const point = {
+            x: qr.x,
+            y: Math.min(100, qr.y + qr.size * 0.707 + 3),
+          };
+          const numberStyle = positions.certificate_number || {};
+          const marker = document.createElement('span');
+          marker.className = 'certificate-marker';
+          marker.dataset.field = field;
+          marker.textContent = 'Certificate No.';
+          marker.style.left = `${point.x}%`;
+          marker.style.top = `${point.y}%`;
+          marker.style.cursor = 'default';
+          marker.style.border = '0';
+          marker.style.background = 'transparent';
+          marker.style.color = numberStyle.color || '#20242c';
+          marker.style.fontFamily = numberStyle.font || 'Helvetica';
+          marker.style.fontWeight = numberStyle.bold ? 'bold' : 'normal';
+          marker.style.fontStyle = numberStyle.italic ? 'italic' : 'normal';
+          markers.append(marker);
+          return;
+        }
+        const point = positions[field] || { x: 50, y: 50, size: 12 };
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = 'certificate-marker';
+        marker.dataset.field = field;
+        marker.textContent = fieldLabels[field] || field;
+        marker.style.left = `${point.x}%`;
+        marker.style.top = `${point.y}%`;
+        marker.style.color = point.color || '#10253d';
+        marker.style.fontFamily = point.font || 'Helvetica';
+        marker.style.fontWeight = point.bold ? 'bold' : 'normal';
+        marker.style.fontStyle = point.italic ? 'italic' : 'normal';
+        if (field === 'qr') {
+          marker.style.width = `${point.size || 9}%`;
+          marker.setAttribute('aria-label', 'QR code position');
+        }
+        markers.append(marker);
+      });
+      positions.custom_texts.forEach((element, index) => {
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = 'certificate-custom-text';
+        marker.dataset.customIndex = String(index);
+        marker.textContent = element.text || 'Edit text';
+        marker.style.left = `${element.x}%`;
+        marker.style.top = `${element.y}%`;
+        marker.style.fontFamily = element.font || 'Helvetica';
+        marker.style.fontSize = `${Math.min(element.size || 24, 28)}px`;
+        marker.style.color = element.color || '#20242c';
+        marker.style.fontWeight = element.bold ? 'bold' : 'normal';
+        marker.style.fontStyle = element.italic ? 'italic' : 'normal';
+        marker.style.textAlign = element.align || 'center';
+        markers.append(marker);
+      });
+      positionsInput.value = JSON.stringify(positions);
+    };
+    const chooseRole = () => {
+      const option = typeOption();
+      if (!roleSelect || !option) return;
+      const roles = readJSON(option.dataset.roles || '[]');
+      const selected = roleSelect.dataset.selectedRole || roleSelect.value;
+      roleSelect.replaceChildren(...roles.map((role) => {
+        const item = document.createElement('option');
+        item.value = role;
+        item.textContent = role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+        return item;
+      }));
+      if (roles.includes(selected)) roleSelect.value = selected;
+      roleSelect.dataset.selectedRole = '';
+    };
+    if (typeSelect?.tagName === 'SELECT') typeSelect.addEventListener('change', () => {
+      chooseRole();
+      updateFieldStyleOptions();
+      render();
+    });
+    chooseRole();
+    updateFieldStyleOptions();
+    render();
+    fieldStyleTarget?.addEventListener('change', syncFieldStyleControls);
+    Object.values(fieldStyleControls).forEach((control) => {
+      control?.addEventListener('input', updateFieldStyle);
+      control?.addEventListener('change', updateFieldStyle);
+    });
+
+    const docxInput = form.querySelector('[data-docx-file]');
+    const docxPreview = form.querySelector('[data-docx-preview]');
+    docxInput?.addEventListener('change', async () => {
+      docxPreview.replaceChildren();
+      const file = docxInput.files[0];
+      if (!file) return;
+      const loading = document.createElement('p');
+      loading.textContent = 'Reading Word certificate text…';
+      docxPreview.append(loading);
+      const body = new FormData();
+      body.append('template_docx', file);
+      body.append('csrf_token', form.querySelector('[name="csrf_token"]').value);
+      try {
+        const response = await fetch(form.dataset.docxPreviewUrl, {
+          method: 'POST',
+          body,
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || 'Could not preview this DOCX file.');
+        docxPreview.replaceChildren();
+        const heading = document.createElement('strong');
+        heading.textContent = `${file.name} · ${result.paragraphs.length} text paragraphs`;
+        docxPreview.append(heading);
+        result.paragraphs.forEach((paragraph) => {
+          const line = document.createElement('div');
+          line.className = 'certificate-docx-line';
+          const text = document.createElement('div');
+          text.textContent = paragraph.text;
+          line.append(text);
+          paragraph.tokens.forEach((token) => {
+            const mapping = document.createElement('label');
+            mapping.className = 'certificate-docx-token';
+            const tokenKey = token.token.toLowerCase();
+            const tokenName = document.createElement('code');
+            tokenName.textContent = `<${token.token}>`;
+            const select = document.createElement('select');
+            select.className = 'form-select form-select-sm';
+            docxFieldOptions.forEach(([value, label]) => {
+              const option = document.createElement('option');
+              option.value = value;
+              option.textContent = label;
+              option.selected = (
+                positions.docx_field_mappings[tokenKey] || token.field
+              ) === value;
+              select.append(option);
+            });
+            select.addEventListener('change', () => {
+              positions.docx_field_mappings[tokenKey] = select.value;
+              positionsInput.value = JSON.stringify(positions);
+            });
+            const style = positions.docx_field_styles[tokenKey] || {};
+            const font = document.createElement('select');
+            font.className = 'form-select form-select-sm';
+            [['Arial', 'Arial'], ['Times New Roman', 'Times'], ['Courier New', 'Courier']].forEach(([value, label]) => {
+              const option = document.createElement('option');
+              option.value = value;
+              option.textContent = label;
+              option.selected = (style.font || 'Arial') === value;
+              font.append(option);
+            });
+            const size = document.createElement('input');
+            size.type = 'number';
+            size.className = 'form-control form-control-sm';
+            size.min = '6';
+            size.max = '48';
+            size.value = String(style.size || 12);
+            size.setAttribute('aria-label', `Font size for ${token.token}`);
+            const color = document.createElement('input');
+            color.type = 'color';
+            color.className = 'form-control form-control-color form-control-sm';
+            color.value = style.color || '#20242c';
+            color.setAttribute('aria-label', `Text color for ${token.token}`);
+            const boldLabel = document.createElement('label');
+            boldLabel.className = 'form-check form-check-inline mb-0';
+            const bold = document.createElement('input');
+            bold.type = 'checkbox';
+            bold.className = 'form-check-input';
+            bold.checked = Boolean(style.bold);
+            boldLabel.append(bold, document.createTextNode(' Bold'));
+            const italicLabel = document.createElement('label');
+            italicLabel.className = 'form-check form-check-inline mb-0';
+            const italic = document.createElement('input');
+            italic.type = 'checkbox';
+            italic.className = 'form-check-input';
+            italic.checked = Boolean(style.italic);
+            italicLabel.append(italic, document.createTextNode(' Italic'));
+            const saveStyle = () => {
+              positions.docx_field_styles[tokenKey] = {
+                font: font.value,
+                size: Number(size.value) || 12,
+                color: color.value,
+                bold: bold.checked,
+                italic: italic.checked,
+              };
+              positionsInput.value = JSON.stringify(positions);
+            };
+            [font, size, color, bold, italic].forEach((control) => {
+              control.addEventListener('input', saveStyle);
+              control.addEventListener('change', saveStyle);
+            });
+            mapping.append(tokenName, select, font, size, color, boldLabel, italicLabel);
+            line.append(mapping);
+          });
+          docxPreview.append(line);
+        });
+        if (!result.token_count) {
+          const notice = document.createElement('p');
+          notice.className = 'small mt-2 mb-0';
+          notice.textContent = 'No merge placeholders were detected. Add placeholders such as <Name>, <Role>, <Domain>, <Event>, <Day>, <Date>, and <Venue> to the DOCX before generating certificates.';
+          docxPreview.append(notice);
+        }
+      } catch (error) {
+        docxPreview.replaceChildren();
+        const message = document.createElement('p');
+        message.className = 'text-danger mb-0';
+        message.textContent = error.message;
+        docxPreview.append(message);
+      }
+    });
+
+    const templateFile = form.querySelector('[data-background-file]');
+    if (templateFile) templateFile.addEventListener('change', () => {
+      const file = templateFile.files[0];
+      if (!file) return;
+      art.replaceChildren();
+      const url = URL.createObjectURL(file);
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        const frame = document.createElement('iframe');
+        frame.src = url;
+        frame.title = 'Certificate background preview';
+        art.append(frame);
+      } else {
+        const image = document.createElement('img');
+        image.src = url;
+        image.alt = 'Certificate background preview';
+        art.append(image);
+      }
+      stage.dataset.empty = 'false';
+    });
+    if (stage.dataset.backgroundUrl) {
+      const url = stage.dataset.backgroundUrl;
+      if (stage.dataset.backgroundFileName.toLowerCase().endsWith('.pdf')) {
+        const frame = document.createElement('iframe');
+        frame.src = url;
+        frame.title = 'Certificate background';
+        art.append(frame);
+      } else {
+        const image = document.createElement('img');
+        image.src = url;
+        image.alt = 'Certificate background';
+        art.append(image);
+      }
+      stage.dataset.empty = 'false';
+    }
+
+    let activeText = -1;
+    let activeCover = -1;
+    const controls = {
+      text: form.querySelector('[data-text-value]'),
+      font: form.querySelector('[data-text-font]'),
+      size: form.querySelector('[data-text-size]'),
+      color: form.querySelector('[data-text-color]'),
+      bold: form.querySelector('[data-text-bold]'),
+      italic: form.querySelector('[data-text-italic]'),
+      align: form.querySelector('[data-text-align]'),
+    };
+    const coverControls = {
+      color: form.querySelector('[data-cover-color]'),
+      width: form.querySelector('[data-cover-width]'),
+      height: form.querySelector('[data-cover-height]'),
+    };
+    const updateCover = () => {
+      const zone = positions.cover_zones[activeCover];
+      if (!zone) return;
+      zone.color = coverControls.color.value;
+      zone.width = Number(coverControls.width.value) || 20;
+      zone.height = Number(coverControls.height.value) || 6;
+      render();
+    };
+    form.querySelector('[data-add-cover]')?.addEventListener('click', () => {
+      if (positions.cover_zones.length >= 20) {
+        window.alert('A certificate can have up to 20 cover areas.');
+        return;
+      }
+      positions.cover_zones.push({
+        x: 50, y: 50, width: 20, height: 6, color: '#ffffff',
+      });
+      activeCover = positions.cover_zones.length - 1;
+      coverControls.color.value = '#ffffff';
+      coverControls.width.value = '20';
+      coverControls.height.value = '6';
+      render();
+    });
+    Object.values(coverControls).forEach((control) => control?.addEventListener('input', updateCover));
+    const updateText = () => {
+      if (activeText < 0 || !positions.custom_texts[activeText]) return;
+      const item = positions.custom_texts[activeText];
+      item.text = controls.text.value;
+      item.font = controls.font.value;
+      item.size = Number(controls.size.value) || 24;
+      item.color = controls.color.value;
+      item.bold = controls.bold.checked;
+      item.italic = controls.italic.checked;
+      item.align = controls.align.value;
+      render();
+    };
+    form.querySelector('[data-add-text]')?.addEventListener('click', () => {
+      if (positions.custom_texts.length >= 40) {
+        window.alert('A certificate can have up to 40 custom text elements.');
+        return;
+      }
+      positions.custom_texts.push({
+        id: `text-${Date.now()}`, text: 'Edit this text', x: 50, y: 50,
+        size: 24, color: '#20242c', font: 'Helvetica', bold: false,
+        italic: false, align: 'center',
+      });
+      activeText = positions.custom_texts.length - 1;
+      Object.assign(controls.text, { value: positions.custom_texts[activeText].text });
+      updateText();
+    });
+    Object.values(controls).forEach((control) => control?.addEventListener('input', updateText));
+    form.querySelector('[data-placeholder]')?.addEventListener('change', (event) => {
+      if (!event.target.value || activeText < 0) return;
+      const input = controls.text;
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? input.value.length;
+      input.value = input.value.slice(0, start) + '{' + '{' + event.target.value + '}' + '}' + input.value.slice(end);
+      input.focus();
+      input.setSelectionRange(start + event.target.value.length + 4, start + event.target.value.length + 4);
+      event.target.value = '';
+      updateText();
+    });
+    markers.addEventListener('click', (event) => {
+      const cover = event.target.closest('[data-cover-index]');
+      if (cover) {
+        activeCover = Number(cover.dataset.coverIndex);
+        const zone = positions.cover_zones[activeCover];
+        coverControls.color.value = zone.color || '#ffffff';
+        coverControls.width.value = zone.width || 20;
+        coverControls.height.value = zone.height || 6;
+        return;
+      }
+      const marker = event.target.closest('[data-custom-index]');
+      if (!marker) return;
+      activeText = Number(marker.dataset.customIndex);
+      const item = positions.custom_texts[activeText];
+      controls.text.value = item.text || '';
+      controls.font.value = item.font || 'Helvetica';
+      controls.size.value = item.size || 24;
+      controls.color.value = item.color || '#20242c';
+      controls.bold.checked = Boolean(item.bold);
+      controls.italic.checked = Boolean(item.italic);
+      controls.align.value = item.align || 'center';
+    });
+    let dragging = null;
+    markers.addEventListener('pointerdown', (event) => {
+      const marker = event.target.closest('.certificate-marker, .certificate-custom-text, .certificate-cover-zone');
+      if (!marker) return;
+      if (marker.dataset.field === 'certificate_number') return;
+      event.preventDefault();
+      marker.setPointerCapture(event.pointerId);
+      dragging = { marker, pointerId: event.pointerId };
+    });
+    markers.addEventListener('pointermove', (event) => {
+      if (!dragging || dragging.pointerId !== event.pointerId) return;
+      const bounds = stage.getBoundingClientRect();
+      const x = Math.min(100, Math.max(0, ((event.clientX - bounds.left) / bounds.width) * 100));
+      const y = Math.min(100, Math.max(0, ((event.clientY - bounds.top) / bounds.height) * 100));
+      dragging.marker.style.left = `${x}%`;
+      dragging.marker.style.top = `${y}%`;
+      if (dragging.marker.dataset.coverIndex !== undefined) {
+        const zone = positions.cover_zones[Number(dragging.marker.dataset.coverIndex)];
+        zone.x = x; zone.y = y;
+      } else if (dragging.marker.dataset.customIndex !== undefined) {
+        const item = positions.custom_texts[Number(dragging.marker.dataset.customIndex)];
+        item.x = x; item.y = y;
+      } else {
+        const point = positions[dragging.marker.dataset.field] || {};
+        point.x = x; point.y = y;
+        positions[dragging.marker.dataset.field] = point;
+      }
+      positionsInput.value = JSON.stringify(positions);
+    });
+    markers.addEventListener('pointerup', () => { dragging = null; });
+  });
+
+  const merge = document.querySelector('[data-mail-merge]');
+  if (merge) {
+    const fileInput = merge.querySelector('[data-merge-file]');
+    const templateSelect = merge.querySelector('[data-merge-template]');
+    const mappings = merge.querySelector('[data-merge-mappings]');
+    const status = merge.querySelector('[data-merge-status]');
+    let headers = [];
+    const definitions = [
+      ['username_column', 'Account username / Student_ID', true, ['username', 'accountusername', 'studentid', 'login']],
+      ['recipient_name_column', 'Name', true, ['name', 'recipientname', 'fullname']],
+      ['domain_column', 'Domain Name', false, ['domainname', 'domain']],
+      ['team_id_column', 'Team ID', false, ['teamid', 'teamcode', 'team']],
+      ['project_title_column', 'Title', false, ['projecttitle', 'project', 'title']],
+      ['event_name_column', 'Event Name override', false, ['eventname', 'event']],
+      ['event_date_column', 'Date override', false, ['eventdate', 'date']],
+      ['event_venue_column', 'Venue override', false, ['eventvenue', 'venue', 'location']],
+      ['recipient_role_column', 'Certificate role', false, ['role', 'recipientrole']],
+      ['event_day_column', 'Event day', false, ['day', 'eventday']],
+      ['email_column', 'Recipient email', false, ['email', 'emailaddress', 'recipientemail']],
+    ];
+    const renderMappings = () => {
+      mappings.replaceChildren();
+      const fields = readJSON(templateSelect.selectedOptions[0]?.dataset.fields || '[]');
+      const required = new Set(['username_column', 'recipient_name_column']);
+      if (fields.includes('domain_name')) required.add('domain_column');
+      if (fields.includes('team_id')) required.add('team_id_column');
+      if (fields.includes('project_title')) required.add('project_title_column');
+      definitions.forEach(([name, label, baseRequired, aliases]) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'col-md-6';
+        const fieldLabel = document.createElement('label');
+        fieldLabel.className = 'form-label';
+        fieldLabel.textContent = label;
+        const select = document.createElement('select');
+        select.className = 'form-select';
+        select.name = name;
+        const isRequired = baseRequired || required.has(name);
+        select.required = isRequired;
+        const blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = isRequired ? 'Choose a column' : 'Use template or leave blank';
+        select.append(blank);
+        const match = headers.find((header) => aliases.includes(normalize(header)));
+        headers.forEach((header) => {
+          const option = document.createElement('option');
+          option.value = header;
+          option.textContent = header;
+          option.selected = header === match;
+          select.append(option);
+        });
+        if (match) select.value = match;
+        wrapper.append(fieldLabel, select);
+        mappings.append(wrapper);
+      });
+    };
+    const setHeaders = (values) => {
+      headers = values.filter(Boolean);
+      renderMappings();
+      status.textContent = `${headers.length} spreadsheet columns found.`;
+      status.className = 'small mt-2 text-success';
+    };
+    const parseCsvHeader = (line) => {
+      const result = [];
+      let value = '';
+      let quoted = false;
+      for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        if (char === '"' && quoted && line[index + 1] === '"') { value += '"'; index += 1; }
+        else if (char === '"') quoted = !quoted;
+        else if (char === ',' && !quoted) { result.push(value.trim()); value = ''; }
+        else value += char;
+      }
+      result.push(value.trim());
+      return result.map((header) => header.replace(/^\uFEFF/, ''));
+    };
+    fileInput.addEventListener('change', async () => {
+      mappings.replaceChildren();
+      status.textContent = '';
+      const file = fileInput.files[0];
+      if (!file) return;
+      if (file.name.toLowerCase().endsWith('.xlsx')) {
+        const body = new FormData();
+        body.append('recipient_csv', file);
+        body.append('csrf_token', merge.querySelector('[name="csrf_token"]').value);
+        status.textContent = 'Reading workbook headers…';
+        try {
+          const response = await fetch(merge.dataset.headerUrl, { method: 'POST', body });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.message || 'Could not read the Excel workbook.');
+          setHeaders(result.headers || []);
+        } catch (error) {
+          status.textContent = error.message;
+          status.className = 'small mt-2 text-danger';
+        }
+      } else if (file.name.toLowerCase().endsWith('.csv')) {
+        const reader = new FileReader();
+        reader.onload = () => setHeaders(parseCsvHeader(String(reader.result).split(/\r?\n/, 1)[0] || ''));
+        reader.onerror = () => { status.textContent = 'Could not read the CSV file.'; status.className = 'small mt-2 text-danger'; };
+        reader.readAsText(file);
+      } else {
+        status.textContent = 'Choose an .xlsx or .csv file.';
+        status.className = 'small mt-2 text-danger';
+      }
+    });
+    templateSelect.addEventListener('change', () => { if (headers.length) renderMappings(); });
+  }
+})();
+</script>
+{% endblock %}

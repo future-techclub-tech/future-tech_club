@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Role team assignments · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">PEOPLE & ACCESS</div><h2>Mentor and coordinator teams</h2><p>Each account sees only the FT teams selected here.</p></div></div>
+<div class="alert alert-info">Assign one or two teams to each mentor or coordinator. Leave all teams unchecked to keep an account unassigned until its portfolio is ready.</div>
+<div class="section-heading"><div><h3>Mentors</h3><p>Mentors can view projects, members, videos, attendance and results for their selected teams.</p></div></div>
+{% for mentor in mentors %}
+<section class="surface-card mb-3">
+  <h5>{{ mentor.display_name or mentor.username }} <span class="muted small">· {{ mentor.username }}</span></h5>
+  <form method="post" action="{{ url_for('main.save_mentor_assignments') }}" class="team-assignment-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mentor_id" value="{{ mentor.id }}">
+    <div class="row g-2">{% for team in teams %}
+      <div class="col-sm-6 col-lg-4"><label class="form-check assignment-option">
+        <input class="form-check-input" type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in mentor_assignments[mentor.id] %}checked{% endif %}>
+        <span class="form-check-label"><strong>{{ team.team_code }}</strong> · {{ team.project_title or 'Project pending' }}{% if team.domain %}<span class="d-block small muted">{{ team.domain.name }}</span>{% endif %}</span>
+      </label></div>
+    {% endfor %}</div>
+    <button class="btn btn-primary mt-3">Save mentor teams</button>
+  </form>
+</section>
+{% else %}<div class="empty-state mb-4">Create a mentor account in User Accounts to assign teams.</div>{% endfor %}
+
+<div class="section-heading"><div><h3>Coordinators</h3><p>Assign one or two FT teams to each coordinator.</p></div></div>
+{% for coordinator in coordinators %}
+<section class="surface-card mb-3">
+  <h5>{{ coordinator.display_name or coordinator.username }} <span class="muted small">· {{ coordinator.username }}</span></h5>
+  <form method="post" action="{{ url_for('main.save_coordinator_assignments') }}" class="team-assignment-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="coordinator_id" value="{{ coordinator.id }}">
+    <div class="row g-2">{% for team in teams %}
+      <div class="col-sm-6 col-lg-4"><label class="form-check assignment-option">
+        <input class="form-check-input" type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in coordinator_assignments[coordinator.id] %}checked{% endif %}>
+        <span class="form-check-label"><strong>{{ team.team_code }}</strong> · {{ team.project_title or 'Project pending' }}{% if team.domain %}<span class="d-block small muted">{{ team.domain.name }}</span>{% endif %}</span>
+      </label></div>
+    {% endfor %}</div>
+    <button class="btn btn-primary mt-3">Save coordinator teams</button>
+  </form>
+</section>
+{% else %}<div class="empty-state">Create a coordinator account in User Accounts to assign teams.</div>{% endfor %}
+<script>
+  document.querySelectorAll('.team-assignment-form').forEach((form) => {
+    const boxes = Array.from(form.querySelectorAll('input[name="team_ids"]'));
+    boxes.forEach((box) => box.addEventListener('change', () => {
+      if (box.checked && boxes.filter((item) => item.checked).length > 2) {
+        box.checked = false;
+        alert('Select no more than two teams for each account.');
+      }
+    }));
+    form.addEventListener('submit', (event) => {
+      const selectedCount = boxes.filter((item) => item.checked).length;
+      if (isCoordinator && selectedCount === 1) return;
+    });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}My Profile · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro">
+  <div>
+    <div class="dashboard-kicker">ACCOUNT SETTINGS</div>
+    <h2>My Profile</h2>
+    <p>Update your personal details. Your username, role, and team access are managed by the admin.</p>
+  </div>
+</div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <section class="surface-card">
+      <h3>Personal details</h3>
+      <form method="post" class="row g-3 mt-1">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-md-6">
+          <label class="form-label" for="profile-username">Username</label>
+          <input class="form-control" id="profile-username" value="{{ current_user.username }}" readonly>
+          <div class="form-text">Your login username cannot be changed here.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="profile-role">Role</label>
+          <input class="form-control" id="profile-role" value="{{ current_user.role|replace('_', ' ')|title }}" readonly>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="profile-display-name">Full name / display name</label>
+          <input class="form-control" id="profile-display-name" name="display_name" maxlength="150" value="{{ current_user.display_name or '' }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="profile-email">Email</label>
+          <input class="form-control" type="email" id="profile-email" name="email" maxlength="150" value="{{ current_user.email or '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="profile-phone">Phone</label>
+          <input class="form-control" type="tel" id="profile-phone" name="phone" maxlength="40" value="{{ current_user.phone or '' }}">
+        </div>
+        {% if member %}
+        <div class="col-md-4">
+          <label class="form-label" for="profile-roll-number">Roll number</label>
+          <input class="form-control" id="profile-roll-number" name="roll_number" maxlength="40" value="{{ member.roll_number or '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="profile-department">Department</label>
+          <input class="form-control" id="profile-department" name="department" maxlength="100" value="{{ member.department or '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="profile-year">Year</label>
+          <input class="form-control" id="profile-year" name="year" maxlength="30" value="{{ member.year or '' }}">
+        </div>
+        {% endif %}
+        <div class="col-12"><button class="btn btn-primary">Save profile</button></div>
+      </form>
+    </section>
+  </div>
+  <div class="col-lg-5">
+    <section class="surface-card h-100">
+      <h3>Account access</h3>
+      {% if profile_teams %}
+      <p class="mb-2"><strong>Assigned FT teams:</strong></p>
+      <ul>{% for team in profile_teams %}<li>{{ team.team_code }}</li>{% endfor %}</ul>
+      {% endif %}
+      <p class="muted">Team membership, role, and assigned access cannot be changed from your profile.</p>
+      <a class="btn btn-outline-primary" href="{{ url_for('main.change_password') }}">Change password</a>
+    </section>
+  </div>
+</div>
+{% endblock %}

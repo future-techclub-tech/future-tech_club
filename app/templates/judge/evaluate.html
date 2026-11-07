@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Evaluate {{ team.team_code }} · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">JUDGE EVALUATION · {{ team.team_code }}</div><h2>{{ team.project_title or 'Project evaluation' }}</h2><p>{{ team.domain.name if team.domain else 'Domain not assigned' }}</p></div><a class="btn btn-outline-primary" href="{{ url_for('main.judge_dashboard') }}">Back to dashboard</a></div>
+{% if ev and ev.finalized %}
+{% if ev.approved %}
+<div class="alert alert-success">Evaluation submitted. Your current score is <strong>{{ '%.1f'|format(ev.total) }} / 60</strong>.</div>
+{% else %}
+<div class="alert alert-warning">Your marks have been submitted and are waiting for admin approval. Current score: <strong>{{ '%.1f'|format(ev.total) }} / 60</strong>.</div>
+{% endif %}
+<section class="surface-card mb-4"><h3>Submitted marks</h3><div class="table-responsive mt-2"><table class="table mb-0"><tbody>
+  {% for key,label,max in [('problem','Problem Identification & Relevance',8),('innovation','Innovation & Creativity',10),('implementation','Technical Implementation',12),('prototype','Working Model / Prototype Demonstration',15),('impact','Real-World Impact / Social Benefits',5),('presentation','Presentation & Communication',5),('qa','Question and Answer',5)] %}
+  <tr><th>{{ label }} <span class="muted">/ {{ max }}</span></th><td class="text-end">{{ '%.1f'|format(ev|attr(key)) }}</td></tr>
+  {% endfor %}
+  <tr class="table-light"><th>Total</th><th class="text-end">{{ '%.1f'|format(ev.total) }} / 60</th></tr>
+</tbody></table></div></section>
+{% if not ev.approved and not nominations_published %}
+<form method="post" action="{{ url_for('main.reopen_judge_evaluation', team_id=team.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-warning">Edit submitted marks</button></form>
+{% endif %}
+{% else %}
+{% if ev %}<div class="alert alert-warning">This evaluation was reopened. Update the marks below and submit again.</div>{% endif %}
+<form method="post" class="surface-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for key,label,max in [('problem','Problem Identification & Relevance',8),('innovation','Innovation & Creativity',10),('implementation','Technical Implementation',12),('prototype','Working Model / Prototype Demonstration',15),('impact','Real-World Impact / Social Benefits',5),('presentation','Presentation & Communication',5),('qa','Question and Answer',5)] %}
+  <label class="form-label mt-2" for="score_{{ key }}">{{ label }} ({{ max }} marks)</label>
+  <input class="form-control" id="score_{{ key }}" type="number" min="0" max="{{ max }}" step="0.5" name="{{ key }}" value="{{ ev|attr(key) if ev else '' }}" required>
+  {% endfor %}
+  <button class="btn btn-primary mt-3">{{ 'Resubmit evaluation / 60' if ev else 'Submit final evaluation / 60' }}</button>
+</form>
+{% endif %}
+{% endblock %}

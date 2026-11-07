@@ -1,0 +1,40 @@
+{% macro rich_text_editor(field, label, value, editor_id) %}
+<div class="rich-text-field">
+  <label class="form-label" for="{{ editor_id }}">{{ label }}</label>
+  <div class="rich-text-toolbar d-flex flex-wrap gap-1 mb-2" role="toolbar" aria-label="{{ label }} formatting">
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="bold" title="Bold" aria-label="Bold"><strong>B</strong></button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="italic" title="Italic" aria-label="Italic"><em>I</em></button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="insertUnorderedList" title="Bulleted list" aria-label="Bulleted list">• List</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="insertOrderedList" title="Numbered list" aria-label="Numbered list">1. List</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="formatBlock" data-rich-value="p" title="Paragraph" aria-label="Paragraph">¶ Paragraph</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="formatBlock" data-rich-value="h3" title="Heading" aria-label="Heading">Heading</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="fontSize" data-rich-value="2" title="Small text" aria-label="Small text">A−</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="fontSize" data-rich-value="3" title="Normal text" aria-label="Normal text">A</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="fontSize" data-rich-value="5" title="Large text" aria-label="Large text">A+</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="fontSize" data-rich-value="7" title="Extra-large text" aria-label="Extra-large text">A++</button>
+    <label class="btn btn-sm btn-outline-secondary rich-text-color" title="Text color">Text <input type="color" value="#172b50" data-rich-color="foreColor" aria-label="Text color"></label>
+    <label class="btn btn-sm btn-outline-secondary rich-text-color" title="Highlight color">Highlight <input type="color" value="#fff176" data-rich-color="hiliteColor" aria-label="Highlight color"></label>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="justifyLeft" title="Align left" aria-label="Align left">Left</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="justifyCenter" title="Align center" aria-label="Align center">Center</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="justifyRight" title="Align right" aria-label="Align right">Right</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="justifyFull" title="Justify" aria-label="Justify">Justify</button>
+    <label class="rich-text-table-size small">Rows
+      <input class="form-control form-control-sm" type="number" min="1" max="50" value="3" data-rich-rows aria-label="Table rows">
+    </label>
+    <label class="rich-text-table-size small">Columns
+      <input class="form-control form-control-sm" type="number" min="1" max="50" value="3" data-rich-columns aria-label="Table columns">
+    </label>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-action="insertTable" title="Insert table with the selected rows and columns" aria-label="Insert table">Insert table</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-action="mergeCells" title="Merge selected adjacent cells in one table" aria-label="Merge cells">Merge cells</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-action="insertLink" title="Insert link" aria-label="Insert link">Link</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="undo" title="Undo" aria-label="Undo">Undo</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="redo" title="Redo" aria-label="Redo">Redo</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="indent" title="Indent" aria-label="Indent">Indent</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-command="outdent" title="Outdent" aria-label="Outdent">Outdent</button>
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-rich-action="clearFormatting" title="Clear formatting from the selection" aria-label="Clear formatting">Clear</button>
+  </div>
+  <div class="form-control rich-text-editor" id="{{ editor_id }}" contenteditable="true" role="textbox" aria-multiline="true" aria-label="{{ label }}" data-rich-editor>{{ value|rich_text }}</div>
+  <textarea class="d-none" name="{{ field }}" data-rich-source aria-hidden="true">{{ value|rich_text }}</textarea>
+</div>
+{% endmacro %}

@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Announcements · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<section class="hero panel mb-4"><div class="hero-content"><div class="hero-kicker">EVENT UPDATES</div><h1>One place for what's next.</h1><p class="mb-0 text-white-50">Official notices and updates from the event administration team.</p></div></section>
+<div class="dashboard-intro"><div><div class="dashboard-kicker">ANNOUNCEMENTS</div><h2>Latest updates</h2></div></div>
+<div class="row g-3">{% for item in announcements %}
+  <div class="col-12"><article class="surface-card"><div class="d-flex flex-wrap justify-content-between gap-2"><h3>{{ item.title }}</h3><span class="small muted">{{ item.created_at.strftime('%d %b %Y, %I:%M %p') }}</span></div><p class="mb-0">{{ item.body }}</p></article></div>
+{% else %}<div class="col-12"><div class="empty-state">There are no announcements yet. Check back for event updates.</div></div>{% endfor %}</div>
+{% endblock %}

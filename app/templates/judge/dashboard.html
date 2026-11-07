@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}Judge Dashboard · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">JUDGING WORKSPACE</div><h2>External Judge Dashboard</h2><p>Review assigned projects, track your progress, and inspect submitted marks.</p></div><a class="btn btn-outline-primary" href="{{ url_for('main.attendance') }}">Take attendance</a></div>
+<div class="row g-3 mb-4">
+  <div class="col-md-4"><div class="stat"><h2>{{ assignments|length }}</h2><div class="stat-label">Assigned projects</div></div></div>
+  <div class="col-md-4"><div class="stat"><h2>{{ pending_count }}</h2><div class="stat-label">Awaiting admin approval</div></div></div>
+  <div class="col-md-4"><div class="stat"><h2>{{ evaluated_count }}</h2><div class="stat-label">Approved</div></div></div>
+  <div class="col-md-4"><div class="stat"><h2>{{ remaining_count }}</h2><div class="stat-label">Remaining</div></div></div>
+</div>
+{% if certificates %}
+<section class="surface-card mb-4">
+  <h3>My certificates</h3>
+  {% for certificate in certificates %}
+  <div class="member-row d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span>{{ certificate.type.name }} · {{ certificate.certificate_id }}</span>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.download_certificate', certificate_id=certificate.certificate_id) }}">Download PDF</a>
+      {% if has_certificate_word_source(certificate) %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.download_certificate_word', certificate_id=certificate.certificate_id) }}">Download Word</a>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+<section class="surface-card">
+  <h3>Assigned projects</h3>
+  <div class="table-responsive mt-3"><table class="table align-middle">
+    <thead><tr><th>Team</th><th>Technical domain</th><th>Project</th><th>Status</th><th>Marks / 60</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for assignment in assignments %}
+      {% set team = assignment.team %}
+      {% set evaluation = evaluations.get(team.id) %}
+      <tr>
+        <td><strong>{{ team.team_code }}</strong></td>
+        <td>{{ team.domain.name if team.domain else 'Unassigned' }}</td>
+        <td>{{ team.project_title or 'Project not submitted' }}</td>
+        <td><span class="badge text-bg-{{ 'success' if evaluation and evaluation.approved else 'warning' }}">{{ 'Approved' if evaluation and evaluation.approved else 'Awaiting admin approval' if evaluation and evaluation.finalized else 'Remaining' }}</span></td>
+        <td>{% if evaluation and evaluation.finalized %}<strong>{{ '%.1f'|format(evaluation.total) }} / 60</strong>{% else %}—{% endif %}</td>
+        <td>
+          {% if evaluation and evaluation.finalized %}
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.evaluate', team_id=team.id) }}">View marks</a>
+          {% if not evaluation.approved and not nominations_published %}
+          <form method="post" action="{{ url_for('main.reopen_judge_evaluation', team_id=team.id) }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-warning">Edit submitted marks</button>
+          </form>
+          {% endif %}
+          {% else %}
+          <a class="btn btn-sm btn-primary" href="{{ url_for('main.evaluate', team_id=team.id) }}">{{ 'Continue evaluation' if evaluation else 'Evaluate' }}</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="6" class="text-center muted py-4">No projects have been assigned to you.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endblock %}

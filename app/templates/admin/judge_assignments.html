@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Judge Assignments</h2>
+<p>Judges can only view and evaluate the teams assigned to their accounts.</p>
+{% for judge in judges %}
+<section class="panel mb-3">
+  <h5>{{ judge.display_name or judge.username }} <small class="text-muted">({{ judge.username }})</small></h5>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="judge_id" value="{{ judge.id }}">
+    <div class="row">
+      {% for team in teams %}
+      <div class="col-sm-6 col-lg-4">
+        <label class="form-check">
+          <input class="form-check-input" type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in assignment_ids[judge.id] %}checked{% endif %}>
+          <span class="form-check-label">{{ team.team_code }} — {{ team.project_title or 'Project not submitted' }}</span>
+        </label>
+      </div>
+      {% endfor %}
+    </div>
+    <button class="btn btn-primary mt-3">Save Assignments</button>
+  </form>
+</section>
+{% else %}
+<div class="alert alert-info">Create a judge account before assigning projects.</div>
+{% endfor %}
+{% endblock %}

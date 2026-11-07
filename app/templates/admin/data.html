@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Data & backups · Admin{% endblock %}
+{% block content %}
+<div class="dashboard-intro">
+  <div><div class="dashboard-kicker">ADMIN DATA MANAGEMENT</div><h2>Data & backups</h2>
+    <p>Download an archive of the event database, table exports, and uploaded files.</p>
+  </div>
+  <a class="btn btn-outline-primary" href="{{ url_for('main.admin_dashboard') }}">Back to dashboard</a>
+</div>
+<section class="surface-card">
+  <h3>Complete event backup</h3>
+  <p>The ZIP contains a SQLite database snapshot when the application uses SQLite, CSV exports of every application table, and uploaded event files such as project videos. Password hashes are excluded from the user CSV export; the database snapshot itself contains the application’s stored password hashes.</p>
+  <p class="small muted">This download contains private account and event data. Store it securely and limit access to trusted administrators.</p>
+  <a class="btn btn-primary" href="{{ url_for('main.download_event_backup') }}">Download complete backup (.zip)</a>
+</section>
+<section class="surface-card mt-3">
+  <h3>Domain details</h3>
+  <p>Choose a domain to review its teams, projects, leaders, members, assigned staff, and evaluation records.</p>
+  <div class="row g-3">
+    {% for domain in domains %}
+    <div class="col-sm-6 col-lg-4">
+      <a class="stat h-100 d-block text-decoration-none" href="{{ url_for('main.public_domain_details', domain_id=domain.id) }}">
+        <span class="badge text-bg-primary">{{ domain.code }}</span>
+        <h4 class="mt-2">{{ domain.name }}</h4>
+        <div class="stat-label">{{ domain.teams|length }} teams · Open domain data</div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} · Admin{% endblock %}
+{% block content %}
+<div class="dashboard-intro">
+  <div><div class="dashboard-kicker">ADMIN DETAILS</div><h2>{{ title }}</h2>
+    {% if section == 'scores' %}<p>Entered marks are shown whether pending or approved. Judge totals are the average of submitted judge evaluations.</p>
+    {% elif section == 'judge-approved' %}<p>Review every submitted judge score. Approve pending marks, reconfirm approved marks, or edit and approve the score. Editing is unavailable while nominations are published.</p>
+    {% elif section == 'admin-scores' %}<p>Admin-entered evaluation scores only, shown out of 40 marks.</p>
+    {% elif section == 'mentors' or section == 'coordinators' %}<p>Account status and assigned team IDs.</p>
+    {% else %}<p>Current event records and status.</p>{% endif %}
+  </div>
+  <a class="btn btn-outline-primary" href="{{ url_for('main.admin_dashboard') }}">Back to dashboard</a>
+</div>
+
+{% if section == 'judge-approved' %}
+<section class="surface-card p-0 overflow-hidden">
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Team_ID</th><th>Leader</th><th>Domain</th><th>Judge</th><th>Marks / 60</th><th>Approval status</th><th>Submitted</th><th>Admin actions</th></tr></thead>
+    <tbody>{% for row in score_rows %}{% for evaluation in row.judge_evaluations %}
+      {% set team = row.team %}
+      <tr>
+        <td><strong>{{ team.team_code }}</strong></td>
+        <td>{{ team.leader_name or team.name or '—' }}</td>
+        <td>{{ team.domain.name if team.domain else 'Not assigned' }}</td>
+        <td>{{ evaluation.judge.display_name or evaluation.judge.username }}</td>
+        <td><strong>{{ '%.1f'|format(evaluation.total) }}</strong> / 60</td>
+        <td><span class="badge text-bg-{{ 'success' if evaluation.approved else 'warning' }}">{{ 'Approved' if evaluation.approved else 'Awaiting approval' }}</span></td>
+        <td>{{ evaluation.submitted_at.strftime('%d %b %Y %H:%M') }}</td>
+        <td class="text-nowrap">
+          <form method="post" action="{{ url_for('main.approve_judge_evaluation', evaluation_id=evaluation.id) }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-success" {% if nominations_published %}disabled{% endif %}>{{ 'Confirm approval' if evaluation.approved else 'Approve marks' }}</button>
+          </form>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.edit_judge_evaluation', evaluation_id=evaluation.id) }}" {% if nominations_published %}aria-disabled="true" tabindex="-1"{% endif %}>Edit marks</a>
+        </td>
+      </tr>
+    {% endfor %}{% else %}<tr><td colspan="8" class="muted text-center py-4">No submitted judge evaluations are available.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% elif section == 'admin-scores' %}
+<section class="surface-card p-0 overflow-hidden">
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Team_ID</th><th>Leader</th><th>Domain</th><th>Project</th><th>Admin marks</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody>{% for row in score_rows %}{% set team = row.team %}
+      <tr>
+        <td><strong>{{ team.team_code }}</strong></td>
+        <td>{{ team.leader_name or team.name or '—' }}</td>
+        <td>{{ team.domain.name if team.domain else 'Not assigned' }}</td>
+        <td>{{ team.project_title or 'Not submitted' }}</td>
+        <td><strong>{{ '%.1f'|format(row.admin_score.total) }}</strong> / 40</td>
+        <td><span class="badge text-bg-{{ 'success' if row.admin_score.finalized else 'warning' }}">{{ 'Approved' if row.admin_score.finalized else 'Entered · not approved' }}</span></td>
+        <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.admin_evaluation', team_id=team.id) }}">Edit admin 40</a></td>
+      </tr>
+    {% else %}<tr><td colspan="7" class="muted text-center py-4">No admin 40-mark entries yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% elif section in ['scores', 'judge-pending', 'mentor-proposals'] %}
+<section class="surface-card p-0 overflow-hidden">
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Team_Id</th><th>Leader</th><th>Domain</th><th>Project</th><th>40 marks</th><th>60 marks</th><th>100 marks</th><th>Admin actions</th></tr></thead>
+    <tbody>{% for row in score_rows %}{% set team = row.team %}
+      <tr>
+        <td><strong>{{ team.team_code }}</strong></td>
+        <td>{{ team.leader_name or team.name or '—' }}</td>
+        <td>{{ team.domain.name if team.domain else 'Not assigned' }}</td>
+        <td>{{ team.project_title or 'Not submitted' }}</td>
+        <td>
+          {% if row.admin_score %}
+            <strong>{{ '%.1f'|format(row.admin_score.total) }}</strong> / 40
+            <div class="small {{ 'text-success' if row.admin_score.finalized else 'text-warning' }}">{{ 'Approved' if row.admin_score.finalized else 'Entered · not approved' }}</div>
+          {% endif %}
+          {% for proposal in row.mentor_proposals %}
+            <div class="small text-warning">Mentor {{ proposal.mentor.display_name or proposal.mentor.username }}: {{ '%.1f'|format(proposal.total) }} / 40 · {{ proposal.status }}</div>
+          {% endfor %}
+          {% if not row.admin_score and not row.mentor_proposals %}
+            <span class="muted">Not entered</span>
+          {% elif not row.admin_score and row.mentor_proposals %}
+            <div class="small muted">Latest mentor proposal is used for the total until an admin score is entered.</div>
+          {% endif %}
+        </td>
+        <td>
+          {% if row.sixty_score is not none %}<strong>{{ '%.1f'|format(row.sixty_score) }}</strong> / 60<div class="small muted">{{ row.judge_evaluations|length }} judge evaluation(s)</div>
+          {% else %}<span class="muted">Not entered</span>{% endif %}
+        </td>
+        <td>{% if row.total_score is not none %}<strong>{{ '%.1f'|format(row.total_score) }}</strong> / 100{% else %}<span class="muted">Incomplete</span>{% endif %}</td>
+        <td class="text-nowrap">
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.admin_evaluation', team_id=team.id) }}">Edit admin 40</a>
+          {% for proposal in row.mentor_proposals if proposal.status == 'Pending' %}
+            <a class="btn btn-sm btn-outline-info mt-1" href="{{ url_for('main.admin_evaluation', team_id=team.id, proposal_id=proposal.id) }}">Review {{ proposal.mentor.username }} 40</a>
+          {% endfor %}
+          {% for evaluation in row.judge_evaluations %}
+            <a class="btn btn-sm {{ 'btn-success' if evaluation.approved else 'btn-outline-warning' }} mt-1" href="{{ url_for('main.edit_judge_evaluation', evaluation_id=evaluation.id) }}">{{ evaluation.judge.display_name or evaluation.judge.username }} · {{ 'Approved' if evaluation.approved else 'Review 60' }}</a>
+          {% endfor %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="muted text-center py-4">No matching score records.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% elif section in ['mentors', 'coordinators'] %}
+<section class="surface-card p-0 overflow-hidden"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Name</th><th>Username</th><th>Account status</th><th>Assigned Team IDs</th></tr></thead><tbody>
+  {% for account in users %}<tr><td>{{ account.display_name or '—' }}</td><td>{{ account.username }}</td><td><span class="badge text-bg-{{ 'success' if account.active else 'secondary' }}">{{ 'Active' if account.active else 'Inactive' }}</span></td>
+    <td>{% if section == 'mentors' %}{{ account.mentor_team_assignments|map(attribute='team.team_code')|join(', ') or 'Not assigned' }}{% else %}{{ account.coordinator_team_assignments|map(attribute='team.team_code')|join(', ') or 'Not assigned' }}{% endif %}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted text-center py-4">No accounts found.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% elif section in ['teams', 'pending-teams'] %}
+<section class="surface-card p-0 overflow-hidden"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Team_ID</th><th>Team name</th><th>Leader</th><th>Domain</th><th>Project</th><th>Members</th><th>Status</th></tr></thead><tbody>
+  {% for team in teams %}<tr><td>{{ team.team_code }}</td><td>{{ team.name or '—' }}</td><td>{{ team.leader_name or '—' }}</td><td>{{ team.domain.name if team.domain else 'Not assigned' }}</td><td>{{ team.project_title or 'Not submitted' }}</td><td>{{ team.members|length }}</td><td>{{ team.registration_status }}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted text-center py-4">No teams found.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% elif section == 'members' %}
+<section class="surface-card p-0 overflow-hidden"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Name</th><th>Student ID</th><th>Team_ID</th><th>Department</th><th>Year</th><th>Username</th></tr></thead><tbody>
+  {% for member in members %}<tr><td>{{ member.full_name }}</td><td>{{ member.prn }}</td><td>{{ member.team.team_code }}</td><td>{{ member.department or '—' }}</td><td>{{ member.year or '—' }}</td><td>{{ member.user.username if member.user else 'No account' }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted text-center py-4">No members found.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% elif section == 'videos' %}
+<section class="surface-card p-0 overflow-hidden"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Team_ID</th><th>Project</th><th>Uploaded</th><th>Video</th></tr></thead><tbody>
+  {% for video in videos %}<tr><td>{{ video.team.team_code }}</td><td>{{ video.team.project_title or video.team.name }}</td><td>{{ video.uploaded_at.strftime('%d %b %Y %H:%M') }}</td><td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.view_project_video', video_id=video.id) }}">Play video</a></td></tr>
+  {% else %}<tr><td colspan="4" class="muted text-center py-4">No project videos uploaded.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% elif section == 'winners' %}
+<section class="surface-card p-0 overflow-hidden"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <thead><tr><th>Team_ID</th><th>Leader</th><th>Domain</th><th>Project</th><th>Winner status</th></tr></thead><tbody>
+  {% for record in winners %}<tr><td>{{ record.team.team_code }}</td><td>{{ record.team.leader_name or record.team.name }}</td><td>{{ record.team.domain.name if record.team.domain else 'Not assigned' }}</td><td>{{ record.team.project_title or '—' }}</td><td>{{ 'Published' if record.published else 'Draft' }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted text-center py-4">No winners selected.</td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% endif %}
+{% endblock %}

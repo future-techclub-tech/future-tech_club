@@ -1,0 +1,177 @@
+{% extends 'base.html' %}
+{% block title %}Tasks · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<header class="dashboard-intro">
+  <div>
+    <div class="dashboard-kicker">TASKS & DELIVERABLES</div>
+    <h1>Tasks</h1>
+    <p>Track assignments, share reference material, and submit documentation or code.</p>
+  </div>
+</header>
+
+{% if current_user.role == 'admin' %}
+<section class="surface-card mb-4" aria-label="Notification service status">
+  <div class="section-heading mt-0">
+    <div><h2 class="h5">Email &amp; SMS delivery status</h2><p>Provider secrets are never displayed here. Configure them in the private server environment.</p></div>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <span class="info-chip">Email: {{ 'Configured' if notification_configuration.email_ready else 'Not configured' }}</span>
+    <span class="info-chip">SMS: {{ 'Configured' if notification_configuration.sms_ready else 'Not configured' }}</span>
+    <span class="info-chip">{{ notification_configuration.users_missing_email }} active accounts need an email address</span>
+    <span class="info-chip">{{ notification_configuration.users_missing_phone }} active accounts need a valid phone number</span>
+  </div>
+  {% if not notification_configuration.email_ready or not notification_configuration.sms_ready %}
+  <p class="small muted mb-0 mt-2">Set SMTP host, port, sender and (when required) credentials for email. SMS requires an MSG91 auth key and approved flow template ID. See the “Task notifications” setup in the README.</p>
+  {% endif %}
+</section>
+<div class="row g-3 mb-4">
+  <div class="col-xl-6">
+    <section class="surface-card h-100">
+      <div class="section-heading mt-0">
+        <div><h2 class="h5">Club-wide task</h2><p>Assign to eligible active accounts: admins, mentors, coordinators, leaders, and members.</p></div>
+      </div>
+      <form method="post" action="{{ url_for('main.create_club_or_admin_project_task') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="scope" value="club">
+        <label class="form-label" for="club-task-title">Task title</label>
+        <input class="form-control mb-2" id="club-task-title" name="title" maxlength="200" required>
+        <label class="form-label" for="club-task-description">Instructions / details</label>
+        <textarea class="form-control mb-2" id="club-task-description" name="description" rows="3" maxlength="4000"></textarea>
+        <div class="row g-2">
+          <div class="col-sm-6"><label class="form-label" for="club-task-due">Due date</label><input class="form-control" id="club-task-due" type="date" name="due_date"></div>
+          <div class="col-sm-6"><label class="form-label" for="club-task-file">Attach reference file (optional)</label><input class="form-control task-file-picker" id="club-task-file" type="file" name="reference_file" aria-describedby="club-task-file-help"><div class="form-text task-file-help" id="club-task-file-help">Any file type · up to {{ file_max_mb }} MB</div></div>
+        </div>
+        <div class="task-role-list mt-3">
+          <label class="task-choice task-choice-all"><input type="checkbox" name="all_active_users" value="1"><span>All eligible active accounts</span></label>
+          {% for role in roles %}
+          <label class="task-choice"><input type="checkbox" name="target_roles" value="{{ role }}"><span>{{ role|replace('_', ' ')|title }} accounts</span></label>
+          {% endfor %}
+        </div>
+        <label class="form-label mt-3" for="club-task-user-search">Or search for individual accounts</label>
+        <input class="form-control task-user-search" id="club-task-user-search" type="search" placeholder="Search by name, username, or role" autocomplete="off" data-user-search data-scope="club" aria-controls="club-task-users" aria-describedby="club-task-users-help">
+        <div class="task-user-selection" aria-live="polite"><span data-user-selection-count>0</span> individual accounts selected</div>
+        <div class="task-user-selected" data-user-selected aria-label="Selected individual accounts"></div>
+        <div class="task-project-user-list task-user-results" id="club-task-users" data-user-results aria-live="polite">
+        </div>
+        <div class="form-text" id="club-task-users-help">Search by name, username, or role, then select one or more matching accounts.</div>
+        <button class="btn btn-primary mt-3" type="submit">Create club task</button>
+      </form>
+    </section>
+  </div>
+  <div class="col-xl-6">
+    <section class="surface-card h-100">
+      <div class="section-heading mt-0">
+        <div><h2 class="h5">Project task</h2><p>Assign work to a specific project team and its participants.</p></div>
+      </div>
+      <form method="post" action="{{ url_for('main.create_club_or_admin_project_task') }}" enctype="multipart/form-data" data-project-task-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="scope" value="project">
+        <label class="form-label" for="project-task-team">Project team</label>
+        <select class="form-select mb-2" id="project-task-team" name="team_id" data-project-team required>
+          <option value="">Choose a project</option>
+          {% for team in teams %}<option value="{{ team.id }}">{{ team.team_code }} · {{ team.project_title or team.name or 'Project' }}</option>{% endfor %}
+        </select>
+        <label class="form-label" for="project-task-title">Task title</label>
+        <input class="form-control mb-2" id="project-task-title" name="title" maxlength="200" required>
+        <label class="form-label" for="project-task-description">Instructions / details</label>
+        <textarea class="form-control mb-2" id="project-task-description" name="description" rows="3" maxlength="4000"></textarea>
+        <div class="row g-2">
+          <div class="col-sm-6"><label class="form-label" for="project-task-due">Due date</label><input class="form-control" id="project-task-due" type="date" name="due_date"></div>
+          <div class="col-sm-6"><label class="form-label" for="project-task-file">Attach reference file (optional)</label><input class="form-control task-file-picker" id="project-task-file" type="file" name="reference_file" aria-describedby="project-task-file-help"><div class="form-text task-file-help" id="project-task-file-help">Any file type · up to {{ file_max_mb }} MB</div></div>
+        </div>
+        <div class="task-role-list mt-3">
+          <label class="task-choice task-choice-all"><input type="checkbox" name="all_project_users" value="1"><span>All eligible project participants</span></label>
+          {% for role in ['team_leader', 'team_member', 'mentor', 'coordinator'] %}
+          <label class="task-choice" data-project-role-choice data-role="{{ role }}"><input type="checkbox" name="target_roles" value="{{ role }}"><span>{{ role|replace('_', ' ')|title }} accounts</span></label>
+          {% endfor %}
+        </div>
+        <label class="form-label mt-3" for="project-task-user-search">Or search individual project participants</label>
+        <input class="form-control task-user-search" id="project-task-user-search" type="search" placeholder="Choose a project, then search by name or username" autocomplete="off" data-user-search data-scope="project" aria-controls="project-task-users" aria-describedby="project-task-users-help">
+        <div class="task-user-selection" aria-live="polite"><span data-user-selection-count>0</span> individual participants selected</div>
+        <div class="task-user-selected" data-user-selected aria-label="Selected project participants"></div>
+        <div class="task-project-user-list task-user-results" id="project-task-users" data-user-results data-project-user-list aria-live="polite">
+          <p class="task-user-empty" data-user-empty>Choose a project, then type at least 2 characters to search participants.</p>
+        </div>
+        <div class="form-text" id="project-task-users-help">Select matching participants. You can search again to add more people.</div>
+        <button class="btn btn-primary mt-3" type="submit">Create project task</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-xl-6">
+    <section class="surface-card">
+      <div class="section-heading mt-0"><div><h2 class="h5">Assigned to me</h2><p>Update progress and submit your files here.</p></div></div>
+      {% for assignment in assignments %}
+      {% set task = assignment.task %}
+      <article class="task-card">
+        <div class="task-card-heading">
+          <div><h3>{{ task.title }}</h3><span class="task-scope">{{ 'Club-wide' if not task.team else task.team.team_code ~ ' project' }}</span></div>
+          <span class="badge text-bg-{{ 'success' if assignment.status == 'Completed' else 'info' if assignment.status == 'Submitted' else 'primary' if assignment.status == 'In Progress' else 'secondary' }}">{{ assignment.status }}</span>
+        </div>
+        {% if task.description %}<p class="task-description">{{ task.description }}</p>{% endif %}
+        <div class="task-meta">Assigned by {{ task.assigner.display_name or task.assigner.username }}{% if task.due_date %} · Due {{ task.due_date.strftime('%d %b %Y') }}{% endif %}</div>
+        {% if task.reference_storage_name %}<a class="task-file-link" href="{{ url_for('main.download_work_task_file', task_id=task.id, kind='reference') }}">📎 Reference: {{ task.reference_original_name }}</a>{% endif %}
+        {% if assignment.deliverable_storage_name %}
+        <a class="task-file-link" href="{{ url_for('main.download_work_task_file', task_id=task.id, kind='deliverable', assignment_id=assignment.id) }}">📎 Your submission: {{ assignment.deliverable_original_name }}</a>
+        {% endif %}
+        <div class="task-card-actions">
+          <form method="post" action="{{ url_for('main.update_work_task_status', task_id=task.id) }}" class="d-flex gap-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select class="form-select form-select-sm" name="status" aria-label="Task status">
+              {% for status in ['Open', 'In Progress', 'Submitted', 'Completed'] %}<option value="{{ status }}" {% if assignment.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-sm btn-outline-primary" type="submit">Update</button>
+          </form>
+          <form method="post" action="{{ url_for('main.submit_work_task_deliverable', task_id=task.id) }}" enctype="multipart/form-data" class="task-submit-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="form-label mb-0" for="deliverable-{{ assignment.id }}">Attach documentation or code</label>
+            <input class="form-control form-control-sm task-file-picker" id="deliverable-{{ assignment.id }}" type="file" name="deliverable_file" required>
+            <button class="btn btn-sm btn-primary" type="submit">Submit file</button>
+          </form>
+        </div>
+      </article>
+      {% else %}<p class="muted mb-0">No tasks are assigned to you.</p>{% endfor %}
+    </section>
+  </div>
+  <div class="col-xl-6">
+    {% if current_user.role == 'admin' %}
+    <section class="surface-card">
+      <div class="section-heading mt-0"><div><h2 class="h5">All tasks</h2><p>Recent club and project work.</p></div></div>
+      {% for task in all_tasks %}
+      <article class="task-card">
+        <div class="task-card-heading"><div><h3>{{ task.title }}</h3><span class="task-scope">{{ 'Club-wide' if not task.team else task.team.team_code ~ ' project' }}</span></div></div>
+        <div class="task-meta">Created by {{ task.assigner.display_name or task.assigner.username }} · {{ task.assignments|length }} assignee(s){% if task.due_date %} · Due {{ task.due_date.strftime('%d %b %Y') }}{% endif %}</div>
+        {% if task.reference_storage_name %}<a class="task-file-link" href="{{ url_for('main.download_work_task_file', task_id=task.id, kind='reference') }}">📎 {{ task.reference_original_name }}</a>{% endif %}
+        <details class="task-assignment-details"><summary>View assignees and submissions</summary>
+          {% for assignment in task.assignments %}
+          <div class="task-meta">{{ assignment.user.display_name or assignment.user.username }} · {{ assignment.status }}{% if assignment.submitted_at %} · submitted {{ assignment.submitted_at.strftime('%d %b %H:%M') }}{% endif %}
+            {% if assignment.deliverable_storage_name %}<a href="{{ url_for('main.download_work_task_file', task_id=task.id, kind='deliverable', assignment_id=assignment.id) }}"> · {{ assignment.deliverable_original_name }}</a>{% endif %}
+          </div>
+          {% endfor %}
+        </details>
+      </article>
+      {% else %}<p class="muted mb-0">No tasks have been created yet.</p>{% endfor %}
+    </section>
+    {% else %}
+    <section class="surface-card">
+      <div class="section-heading mt-0"><div><h2 class="h5">Created by me</h2><p>Project tasks you assigned to your team.</p></div></div>
+      {% for task in created_tasks %}
+      <article class="task-card">
+        <div class="task-card-heading"><div><h3>{{ task.title }}</h3><span class="task-scope">{{ task.team.team_code }} project</span></div></div>
+        <div class="task-meta">{{ task.assignments|length }} assignee(s){% if task.due_date %} · Due {{ task.due_date.strftime('%d %b %Y') }}{% endif %}</div>
+        {% for assignment in task.assignments %}
+        <div class="task-meta">{{ assignment.user.display_name or assignment.user.username }} · {{ assignment.status }}
+          {% if assignment.deliverable_storage_name %}<a href="{{ url_for('main.download_work_task_file', task_id=task.id, kind='deliverable', assignment_id=assignment.id) }}"> · {{ assignment.deliverable_original_name }}</a>{% endif %}
+        </div>
+        {% endfor %}
+      </article>
+      {% else %}<p class="muted mb-0">You have not created a project task.</p>{% endfor %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/tasks.js', v=3) }}" defer></script>
+{% endblock %}

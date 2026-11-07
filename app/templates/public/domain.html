@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}{{ domain.code }} · {{ domain.name }}{% endblock %}
+{% block content %}
+<div class="dashboard-intro">
+  <div>
+    <div class="dashboard-kicker">TECHNICAL DOMAIN · {{ domain.code }}</div>
+    <h2>{{ domain.name }}</h2>
+    <p>{{ team_details|length }} team{{ '' if team_details|length == 1 else 's' }} in this domain.</p>
+  </div>
+  <a class="btn btn-outline-primary" href="{{ url_for('main.home') }}">All domains</a>
+</div>
+{% for detail in team_details %}
+{% set team = detail.team %}
+<section class="surface-card mb-3">
+  <div class="d-flex flex-wrap justify-content-between gap-2">
+    <div>
+      <div class="dashboard-kicker">{{ team.team_code }} · {{ team.registration_status }}</div>
+      <h3>{{ team.project_title or team.name or 'Project pending' }}</h3>
+      {% if team.leader_name %}<p class="mb-1"><strong>Team leader:</strong> {{ team.leader_name }}</p>{% endif %}
+    </div>
+  </div>
+  {% if team.abstract %}<div class="mt-3">{{ team.abstract|rich_text }}</div>{% endif %}
+  {% if team.members %}
+  <h5 class="mt-3">Team members</h5>
+  <ul class="mb-0">
+    {% for member in team.members %}
+    <li>{{ member.full_name }}{% if is_admin %} · {{ member.prn or 'No student ID' }} · {{ member.department or 'Department not set' }}{% if member.year %} · {{ member.year }}{% endif %}{% if member.email %} · {{ member.email }}{% endif %}{% if member.phone %} · {{ member.phone }}{% endif %}{% if member.user %} · Login: {{ member.user.username }}{% endif %}{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted mt-3 mb-0">No members registered yet.</p>{% endif %}
+  {% if is_admin %}
+  <hr>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <h5>Project details</h5>
+      <dl class="row mb-0">
+        <dt class="col-sm-4">Status</dt><dd class="col-sm-8">{{ team.registration_status }}</dd>
+        <dt class="col-sm-4">Department / year</dt><dd class="col-sm-8">{{ team.department or '—' }}{% if team.year %} / {{ team.year }}{% endif %}</dd>
+        <dt class="col-sm-4">Leader contact</dt><dd class="col-sm-8">{{ team.email or '—' }}{% if team.phone %} · {{ team.phone }}{% endif %}</dd>
+        <dt class="col-sm-4">Problem</dt><dd class="col-sm-8">{{ (team.problem_statement or '—')|rich_text }}</dd>
+        <dt class="col-sm-4">Objectives</dt><dd class="col-sm-8">{{ (team.objectives or '—')|rich_text }}</dd>
+        <dt class="col-sm-4">Technologies</dt><dd class="col-sm-8">{{ (team.technologies or '—')|rich_text }}</dd>
+      </dl>
+    </div>
+    <div class="col-md-6">
+      <h5>Assigned staff</h5>
+      <p class="mb-1"><strong>Mentors:</strong> {{ detail.mentor_names|join(', ') or 'Not assigned' }}</p>
+      <p class="mb-1"><strong>Coordinators:</strong> {{ detail.coordinator_names|join(', ') or 'Not assigned' }}</p>
+      <p class="mb-1"><strong>Judges:</strong> {{ detail.judge_names|join(', ') or 'Not assigned' }}</p>
+      <p class="mb-1"><strong>Leader account:</strong> {{ detail.leader_account.username if detail.leader_account else 'Not created' }}</p>
+      <h5 class="mt-3">Scores</h5>
+      <p class="mb-1"><strong>Admin:</strong> {% if detail.admin_score %}{{ '%.1f'|format(detail.admin_score.total) }} / 40 · {{ 'Final' if detail.admin_score.finalized else 'Draft' }}{% else %}Not entered{% endif %}</p>
+      {% for evaluation in detail.evaluations %}
+      <p class="mb-1"><strong>Judge {{ evaluation.judge.display_name or evaluation.judge.username }}:</strong> {{ '%.1f'|format(evaluation.total) }} / 60 · {{ 'Approved' if evaluation.approved else ('Submitted' if evaluation.finalized else 'Draft') }}</p>
+      {% endfor %}
+      {% for proposal in detail.mentor_scores %}
+      <p class="mb-1"><strong>Mentor {{ proposal.mentor.display_name or proposal.mentor.username }}:</strong> {{ '%.1f'|format(proposal.total) }} / 40 · {{ proposal.status }}</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% else %}
+<div class="empty-state">No teams are assigned to this domain yet.</div>
+{% endfor %}
+{% endblock %}

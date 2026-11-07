@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}History · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<header class="dashboard-intro">
+  <div>
+    <div class="dashboard-kicker">ACCOUNT HISTORY</div>
+    <h1>{{ 'User activity history' if administrator else 'My history' }}</h1>
+    <p>{{ 'Review stored account actions and notifications. Message contents are not included.' if administrator else 'Only your own account activity and notifications are shown here.' }}</p>
+  </div>
+</header>
+
+{% if administrator %}
+<section class="surface-card mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-md-9">
+      <label class="form-label" for="history-user">Filter by user</label>
+      <select class="form-select" id="history-user" name="user_id">
+        <option value="">All users</option>
+        {% for user in users %}
+        <option value="{{ user.id }}" {% if selected_user and selected_user.id == user.id %}selected{% endif %}>{{ user.display_name or user.username }} · {{ user.username }} · {{ user.role|replace('_',' ')|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3"><button class="btn btn-primary w-100">View history</button></div>
+  </form>
+</section>
+{% endif %}
+
+<section class="surface-card">
+  {% if selected_user and administrator %}<h2 class="h5">History for {{ selected_user.display_name or selected_user.username }}</h2>{% endif %}
+  <div class="small muted mb-2">Page {{ page }} of {{ page_count }}</div>
+  <div class="table-responsive mt-3">
+    <table class="table align-middle">
+      <thead><tr>{% if administrator and not selected_user %}<th>User</th>{% endif %}<th>Type</th><th>Activity / notification</th><th>Details</th><th>Time</th></tr></thead>
+      <tbody>
+      {% for item in history %}
+      <tr>
+        {% if administrator and not selected_user %}<td>{{ item.username }}</td>{% endif %}
+        <td><span class="badge text-bg-{{ 'info' if item.kind == 'Notification' else 'secondary' }}">{{ item.kind }}</span></td>
+        <td>{{ item.title }}</td>
+        <td>{{ item.details or '—' }}</td>
+        <td>{{ item.created_at.strftime('%d %b %Y, %I:%M %p') if item.created_at else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 5 if administrator and not selected_user else 4 }}"><div class="empty-state">No history is available yet.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page_count > 1 %}
+  <nav class="d-flex justify-content-between mt-3" aria-label="History pages">
+    {% if page > 1 %}<a class="btn btn-outline-primary" href="{{ url_for('main.account_history', user_id=selected_user.id if selected_user and administrator else none, page=page-1) }}">Previous</a>{% else %}<span></span>{% endif %}
+    {% if page < page_count %}<a class="btn btn-outline-primary" href="{{ url_for('main.account_history', user_id=selected_user.id if selected_user and administrator else none, page=page+1) }}">Next</a>{% endif %}
+  </nav>
+  {% endif %}
+</section>
+{% endblock %}

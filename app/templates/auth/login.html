@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Portal Login · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5">
+    <div class="panel">
+      <h2 class="mb-3">Portal Login</h2>
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="form-label" for="login-role">Role</label>
+        <select class="form-select mb-3" id="login-role" name="role" required>
+          <option value="">Select your role</option>
+          {% for role in roles %}
+          <option value="{{ role }}">{{ role|replace('_', ' ')|title }}</option>
+          {% endfor %}
+        </select>
+        <label class="form-label" for="login-username">Username</label>
+        <input class="form-control mb-3" id="login-username" name="username" autocomplete="username" required autofocus>
+        <label class="form-label" for="login-password">Password</label>
+        <div class="input-group mb-3">
+          <input class="form-control" id="login-password" type="password" name="password" autocomplete="current-password" data-password-toggle required>
+          <button class="btn btn-outline-secondary" type="button" data-password-toggle-button aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+        <button class="btn btn-primary w-100">Login</button>
+      </form>
+      <small class="text-muted d-block mt-3">Choose the role assigned to your account and use credentials issued by the Admin.</small>
+    </div>
+  </div>
+</div>
+{% endblock %}

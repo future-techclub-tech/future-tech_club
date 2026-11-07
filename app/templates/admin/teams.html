@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% from 'macros/rich_text.html' import rich_text_editor %}
+{% block title %}Team & Project Management · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro">
+  <div><div class="dashboard-kicker">EVENT OPERATIONS</div><h2>Team & Project Management</h2><p>Assign teams to domains and manage project information, registration, and approvals.</p></div>
+  <span class="info-chip">{{ teams|length }} teams · {{ domains|length }} domains</span>
+</div>
+<section class="surface-card mb-4">
+  <h3>Add a team</h3>
+  <p class="muted">A team leader account is created automatically. The temporary password is shown once after saving.</p>
+  <form method="post" action="{{ url_for('main.create_team') }}" class="row g-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-3"><label class="form-label" for="new-team-code">Team ID</label><input id="new-team-code" class="form-control" name="team_code" placeholder="FT_28" pattern="FT_[0-9]{2,3}" required></div>
+    <div class="col-md-3"><label class="form-label" for="new-team-name">Team name</label><input id="new-team-name" class="form-control" name="name" maxlength="150"></div>
+    <div class="col-md-3"><label class="form-label" for="new-team-leader">Team leader</label><input id="new-team-leader" class="form-control" name="leader_name" maxlength="150"></div>
+    <div class="col-md-3"><label class="form-label" for="new-team-domain">Domain</label><select id="new-team-domain" class="form-select" name="domain_id"><option value="">Unassigned</option>{% for d in domains %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+    <div class="col-12"><button class="btn btn-success">Create team & leader login</button></div>
+  </form>
+</section>
+<section class="surface-card p-0 overflow-hidden">
+<div class="table-responsive"><table class="table table-striped admin-team-table align-middle mb-0"><thead><tr><th>Team ID</th><th>Team Name</th><th>Leader</th><th>Domain</th><th>Project</th><th>Status</th><th>Approved 40 marks</th><th>Actions</th></tr></thead><tbody>{% for t in teams %}{% set score = admin_scores.get(t.id) %}<tr><td><strong>{{ t.team_code }}</strong></td><td>{{ t.name or '—' }}</td><td>{{ t.leader_name or '—' }}</td><td>{{ t.domain.name if t.domain else 'Not assigned' }}</td><td>{{ t.project_title or 'Not submitted' }}</td><td><span class="badge rounded-pill text-bg-{{ 'success' if t.registration_status == 'Approved' else 'secondary' }}">{{ t.registration_status }}</span></td><td>{% if score and score.finalized %}<strong>{{ '%.1f'|format(score.total) }} / 40</strong><span class="badge text-bg-success ms-1">Approved</span>{% elif score %}<span class="badge text-bg-warning">Awaiting approval</span>{% else %}<span class="muted">Not entered</span>{% endif %}</td><td class="team-actions"><details><summary class="btn btn-sm btn-outline-primary">Edit</summary><form method="post" class="editform"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="team_code" value="{{ t.team_code }}"><label>Name</label><input class="form-control" name="name" value="{{ t.name }}">
+<label>Leader</label><input class="form-control" name="leader_name" value="{{ t.leader_name }}"><label>Email</label><input class="form-control" name="email" value="{{ t.email }}"><label>Phone</label><input class="form-control" name="phone" value="{{ t.phone }}"><label>Department</label><input class="form-control" name="department" value="{{ t.department }}"><label>Year</label><input class="form-control" name="year" value="{{ t.year }}">
+<label>Domain</label><select class="form-select" name="domain_id"><option value="">Select</option>{% for d in domains %}<option value="{{ d.id }}" {% if t.domain_id==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+<label>Project title</label><input class="form-control" name="project_title" value="{{ t.project_title }}">
+{{ rich_text_editor('abstract', 'Abstract', t.abstract or '', 'team-' ~ t.id ~ '-abstract') }}
+{{ rich_text_editor('problem_statement', 'Problem statement', t.problem_statement or '', 'team-' ~ t.id ~ '-problem-statement') }}
+{{ rich_text_editor('objectives', 'Objectives', t.objectives or '', 'team-' ~ t.id ~ '-objectives') }}
+{{ rich_text_editor('technologies', 'Technologies', t.technologies or '', 'team-' ~ t.id ~ '-technologies') }}
+<label>Status</label><select class="form-select" name="registration_status">{% for s in ['Pending','Approved','Rejected','Changes Required'] %}<option {% if t.registration_status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select><button class="btn btn-primary mt-2">Save</button></form></details>
+<form method="post" action="{{ url_for('main.approve_team', team_id=t.id) }}" class="mt-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="Approved"><button class="btn btn-sm btn-success">Approve</button></form><a class="btn btn-sm btn-outline-secondary mt-1" href="{{ url_for('main.admin_evaluation', team_id=t.id) }}">Admin 40 marks</a>
+<form method="post" action="{{ url_for('main.delete_team', team_id=t.id) }}" class="mt-1" onsubmit="return confirm('Delete {{ t.team_code }} and its team accounts? Teams with evaluation or attendance history cannot be deleted.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-danger">Delete team</button></form></td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

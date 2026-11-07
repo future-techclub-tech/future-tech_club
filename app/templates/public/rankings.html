@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Leaderboard · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">FINAL RESULTS</div><h2>Domain-wise Leaderboard</h2><p>Official results are announced by the event admin after winners are selected.</p></div></div>
+{% if not published %}
+  {% if admin_preview %}<div class="alert alert-warning">Admin preview only — unreleased domains are visible only to administrators.</div>
+  {% elif visible_domain_results %}<div class="alert alert-info">Some domain results have been announced. Other domains remain private until the admin releases them.</div>
+  {% else %}<div class="alert alert-info">The final leaderboard will be announced here by the admin after winners are announced.</div>{% endif %}
+{% else %}
+  <div class="alert alert-success">The event admin has announced the final winners. Congratulations to all participating teams!</div>
+{% endif %}
+{% if published or admin_preview or visible_domain_results %}
+  <p>Only finalized scores are displayed. The leaderboard shows total marks, not the judge/admin breakdown.</p>
+  {% for domain,rows,released in data %}
+  {% if released or admin_preview %}
+  <div class="panel mb-4"><h4>{{ domain.name }}</h4><div class="table-responsive"><table class="table table-hover"><thead><tr><th>Rank</th><th>Team Leader Name</th><th>Total Marks / 100</th><th>Nomination Status</th></tr></thead><tbody>
+    {% for team,score in rows %}<tr><td>{{ loop.index }}</td><td>{{ team.leader_name or team.team_code }}</td><td>{{ '%.2f'|format(score) }}</td><td>{% if team.nominations|selectattr('published')|list %}<span class="badge bg-success">Nominated</span>{% endif %}{% if team.winners|selectattr('published')|list %}<span class="badge bg-warning text-dark">Winner</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="4">No finalized results for this domain yet.</td></tr>{% endfor %}
+  </tbody></table></div></div>
+  {% endif %}
+  {% endfor %}
+{% endif %}
+{% endblock %}

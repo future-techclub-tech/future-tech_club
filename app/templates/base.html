@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}FUTURE-TECH INNOVISION 2026{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css', v=2) }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/chat.css', v=5) }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/tasks.css', v=4) }}" rel="stylesheet">
+</head>
+<body class="dashboard-space{% if request.endpoint == 'main.certificates' %} certificate-studio-page{% endif %}">
+  {% if college_banner_image %}
+  <div class="college-header-art"><img src="{{ url_for('main.branding_asset', filename=college_banner_image) }}" alt="College exhibition header"></div>
+  {% endif %}
+  <div class="college-banner">
+    <div class="container banner-inner">
+      {% if college_logo %}
+      <img class="college-logo" src="{{ url_for('main.branding_asset', filename=college_logo) }}" alt="College logo">
+      {% else %}
+      <div class="logo-placeholder college-logo" aria-hidden="true">NK</div>
+      {% endif %}
+      <div class="college-title">
+        <span class="eyebrow">FUTURE-TECH CLUB PRESENTS</span>
+        <div class="college-name">{{ college_header }}</div>
+        <div class="college-subtitle">{{ college_subtitle }} · FUTURE-TECH INNOVISION 2026</div>
+      </div>
+      {% if club_logo %}
+      <img class="club-logo" src="{{ url_for('main.branding_asset', filename=club_logo) }}" alt="Future-Tech Club logo">
+      {% else %}
+      <div class="logo-placeholder club-logo" aria-hidden="true">FT</div>
+      {% endif %}
+    </div>
+  </div>
+  <nav class="navbar navbar-dark topbar">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="{{ url_for('main.home') }}">INNOVISION <span>2026</span></a>
+      <div class="d-flex align-items-center gap-2 ms-auto">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNavigation" aria-controls="siteNavigation" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+      </div>
+      <div class="collapse navbar-collapse" id="siteNavigation">
+        <div class="navbar-nav ms-auto align-items-lg-center">
+          {% if current_user.is_authenticated and current_user.role == 'admin' %}
+          <a class="nav-link" href="{{ url_for('main.admin_users') }}#user-access">User Access</a>
+          <a class="nav-link" href="{{ url_for('main.certificates') }}">Certificates</a>
+          {% endif %}
+          <a class="nav-link" href="{{ url_for('main.home') }}">Home</a>
+          <a class="nav-link" href="{{ url_for('main.public_announcements') }}">Announcements</a>
+          <a class="nav-link" href="{{ url_for('main.rankings') }}">Rankings</a>
+          <a class="nav-link" href="{{ url_for('main.verify_certificate_by_number') }}">Verify Certificate</a>
+          {% if current_user.is_authenticated %}
+          <a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard{% if unread_notification_count %} <span class="badge rounded-pill text-bg-danger" aria-label="{{ unread_notification_count }} unread {{ notification_count_label }}">{{ unread_notification_count }}</span>{% endif %}</a>
+          <a class="nav-link" href="{{ url_for('main.work_tasks') }}">Tasks{% if unread_notification_count %} <span class="badge rounded-pill text-bg-danger" aria-label="{{ unread_notification_count }} unread {{ notification_count_label }}">{{ unread_notification_count }}</span>{% endif %}</a>
+          <a class="nav-link" href="{{ url_for('main.admin_chats') if current_user.role == 'admin' else url_for('main.user_chats') }}">Chats</a>
+          <a class="nav-link" href="{{ url_for('main.account_history') }}">Notifications{% if unread_notification_count %} <span class="badge rounded-pill text-bg-danger" aria-label="{{ unread_notification_count }} unread {{ notification_count_label }}">{{ unread_notification_count }}</span>{% endif %}</a>
+          <a class="nav-link" href="{{ url_for('main.account_profile') }}">My Profile</a>
+          {% if current_user.role in ['admin', 'coordinator', 'judge'] %}
+          <a class="nav-link" href="{{ url_for('main.attendance') }}">Attendance</a>
+          {% endif %}
+          <a class="nav-link" href="{{ url_for('main.change_password') }}">Password</a>
+          <form method="post" action="{{ url_for('main.logout') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="nav-link btn btn-link" type="submit">Logout</button>
+          </form>
+          {% else %}
+          <a class="nav-link nav-login" href="{{ url_for('main.login') }}">Portal Login</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </nav>
+  <main class="container page-shell">
+    {% if session.get('admin_impersonation_admin_id') %}
+    <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" role="status">
+      <div><strong>Admin impersonation:</strong> You are viewing {{ current_user.display_name or current_user.username }} as {{ session.get('admin_impersonation_mode', 'view_only')|replace('_',' ') }}. This session has no fixed time limit; return to Admin or log out when finished. {% if session.get('admin_impersonation_mode') == 'view_only' %}Changes are disabled.{% else %}Actions are audit-logged to your admin account.{% endif %}</div>
+      <div class="d-flex flex-wrap gap-2">
+        {% if session.get('admin_impersonation_mode') == 'view_only' %}
+        <form method="post" action="{{ url_for('main.upgrade_admin_impersonation') }}" onsubmit="return confirm('Enable full audited access as this user? Changes will be recorded under your admin account.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-warning">Switch to full audited access</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('main.end_admin_impersonation') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-dark">Return to Admin</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+    {% with messages=get_flashed_messages(with_categories=true) %}
+      {% for category,message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+      {% endfor %}
+    {% endwith %}
+    {% if recent_notifications %}
+    <section class="mb-3" aria-label="Unread notifications">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <strong>{{ unread_notification_count }} unread {{ notification_count_label }}</strong>
+        <a href="{{ url_for('main.account_history') }}">View all notifications</a>
+      </div>
+      {% for notification in recent_notifications %}
+      <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-start gap-2" role="status">
+        <div><strong>{{ notification.title }}</strong><br>{{ notification.body }}</div>
+        <form method="post" action="{{ url_for('main.mark_notification_read', notification_id=notification.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-primary">Mark as read</button>
+        </form>
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">
+    <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
+      <span>Future-Tech Club · {{ college_header }} · {{ college_subtitle }}</span>
+      <span>Imagine. Innovate. Inspire.</span>
+    </div>
+  </footer>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/password-toggle.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/rich-text-editor.js') }}" defer></script>
+</body>
+</html>

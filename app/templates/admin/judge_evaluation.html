@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Review Judge Marks · {{ evaluation.team.team_code }}{% endblock %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">ADMIN SCORE REVIEW</div><h2>{{ evaluation.team.team_code }} · {{ evaluation.judge.display_name or evaluation.judge.username }}</h2><p>{{ evaluation.team.project_title or evaluation.team.name }} · {{ evaluation.team.domain.name if evaluation.team.domain else 'Domain not assigned' }}</p></div><a class="btn btn-outline-primary" href="{{ url_for('main.admin_overview', section='scores') }}">Back to 100 marks</a></div>
+<div class="alert alert-info">Submitted judge score: <strong>{{ '%.1f'|format(evaluation.total) }} / 60</strong> · {{ 'Approved' if evaluation.approved else 'Awaiting admin approval' }}. Adjust any criterion below; saving approves the final marks.</div>
+<form method="post" class="surface-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for key,label,max in [('problem','Problem Identification & Relevance',8),('innovation','Innovation & Creativity',10),('implementation','Technical Implementation',12),('prototype','Working Model / Prototype Demonstration',15),('impact','Real-World Impact / Social Benefits',5),('presentation','Presentation & Communication',5),('qa','Question and Answer',5)] %}
+  <label class="form-label mt-2" for="score_{{ key }}">{{ label }} ({{ max }} marks)</label>
+  <input class="form-control" id="score_{{ key }}" type="number" min="0" max="{{ max }}" step="0.5" name="{{ key }}" value="{{ evaluation|attr(key) }}" required>
+  {% endfor %}
+  <button class="btn btn-primary mt-3">Save changes and approve / 60</button>
+</form>
+{% endblock %}

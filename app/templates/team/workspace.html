@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="dashboard-intro mb-4">
+  <div>
+    <div class="dashboard-kicker">TEAM WORKSPACE · {{ team.team_code }}</div>
+    <h2>{{ team.project_title or team.name or team.team_code }}</h2>
+    <p>Tasks and conversations for this team.</p>
+  </div>
+  <a class="btn btn-outline-primary" href="{{ url_for('main.team_dashboard') if current_user.role == 'team_leader' else url_for('main.member_dashboard') if current_user.role == 'team_member' else url_for('main.simple_dashboard', role='Mentor' if current_user.role == 'mentor' else 'Coordinator') }}">Back to dashboard</a>
+</div>
+<div class="row g-4">
+  <div class="col-xl-5">
+    <section class="surface-card mb-4">
+      <div class="section-heading mt-0"><div><h3>Team tasks</h3><p>Assignees can update the status of their own tasks.</p></div></div>
+      {% if can_assign_tasks %}
+      <form method="post" action="{{ url_for('main.create_team_task', team_id=team.id) }}" class="row g-2 mb-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-12"><label class="form-label" for="task-title">Task</label><input class="form-control" id="task-title" name="title" maxlength="200" required></div>
+        <div class="col-12"><label class="form-label" for="task-description">Details</label><textarea class="form-control" id="task-description" name="description" rows="2" maxlength="4000"></textarea></div>
+        <div class="col-md-7"><label class="form-label" for="assignee">Assign to team leader or member</label><select class="form-select" id="assignee" name="assignee_id" required><option value="">Choose a team participant</option>{% for member in member_accounts %}<option value="{{ member.id }}">{{ member.display_name or member.username }} · {{ member.role|replace('_', ' ')|title }}</option>{% endfor %}</select></div>
+        <div class="col-md-5"><label class="form-label" for="due-date">Due date</label><input class="form-control" id="due-date" type="date" name="due_date"></div>
+        <div class="col-12"><button class="btn btn-primary" {% if not member_accounts %}disabled{% endif %}>Assign task</button>{% if not member_accounts %}<span class="small muted ms-2">No team leader or member accounts are linked to this team yet.</span>{% endif %}</div>
+      </form>
+      {% endif %}
+      {% for task in tasks %}
+      <article class="member-row">
+        <div class="d-flex justify-content-between gap-2"><strong>{{ task.title }}</strong><span class="badge text-bg-{{ 'success' if task.status == 'Completed' else 'primary' if task.status == 'In Progress' else 'secondary' }}">{{ task.status }}</span></div>
+        {% if task.description %}<p class="small mb-1 mt-2">{{ task.description }}</p>{% endif %}
+        <div class="small muted">For {{ task.assignee.display_name or task.assignee.username }} · Assigned by {{ task.assigner.display_name or task.assigner.username }}{% if task.due_date %} · Due {{ task.due_date.strftime('%d %b %Y') }}{% endif %}</div>
+        {% if current_user.id == task.assignee_id %}
+        <form method="post" action="{{ url_for('main.update_team_task_status', task_id=task.id) }}" class="d-flex gap-2 mt-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select class="form-select form-select-sm" name="status" aria-label="Task status">
+            {% for status in ['Open', 'In Progress', 'Completed'] %}<option value="{{ status }}" {% if task.status == status %}selected{% endif %}>{{ status }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-sm btn-outline-primary">Update</button>
+        </form>
+        {% endif %}
+      </article>
+      {% else %}<p class="muted mb-0">No tasks have been assigned to this team.</p>{% endfor %}
+      <div class="section-heading mt-4">
+        <div><h3>Project tasks</h3><p>Share documentation, code, and other deliverables with project participants.</p></div>
+      </div>
+      {% if can_create_project_tasks %}
+      <form method="post" action="{{ url_for('main.create_project_work_task', team_id=team.id) }}" enctype="multipart/form-data" class="task-project-create mb-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="form-label" for="project-work-title">Task</label>
+        <input class="form-control mb-2" id="project-work-title" name="title" maxlength="200" required>
+        <label class="form-label" for="project-work-description">Instructions</label>
+        <textarea class="form-control mb-2" id="project-work-description" name="description" rows="2" maxlength="4000"></textarea>
+        <div class="row g-2">
+          <div class="col-sm-6"><label class="form-label" for="project-work-due">Due date</label><input class="form-control" id="project-work-due" type="date" name="due_date"></div>
+          <div class="col-sm-6"><label class="form-label" for="project-work-reference">Attach reference file (optional)</label><input class="form-control task-file-picker" id="project-work-reference" type="file" name="reference_file" aria-describedby="project-work-reference-help"><div class="form-text task-file-help" id="project-work-reference-help">Any file type · up to 25 MB</div></div>
+        </div>
+        <label class="task-choice task-choice-all mt-3"><input type="checkbox" name="all_project_users" value="1"><span>Assign to all eligible project participants</span></label>
+        <div class="task-project-member-options">
+          {% for participant in project_task_users %}
+          <label class="task-choice"><input type="checkbox" name="assignee_ids" value="{{ participant.id }}"><span>{{ participant.display_name or participant.username }} · {{ participant.role|replace('_', ' ')|title }}</span></label>
+          {% endfor %}
+        </div>
+        <button class="btn btn-primary btn-sm mt-3" type="submit">Create project task</button>
+      </form>
+      {% endif %}
+      {% for task in project_tasks %}
+      <article class="task-card">
+        <div class="task-card-heading">
+          <div><h4>{{ task.title }}</h4><span class="task-scope">Created by {{ task.assigner.display_name or task.assigner.username }}</span></div>
+          {% set assignment = task.assignments|selectattr('user_id', 'equalto', current_user.id)|first %}
+          {% if assignment %}<span class="badge text-bg-{{ 'success' if assignment.status == 'Completed' else 'info' if assignment.status == 'Submitted' else 'primary' if assignment.status == 'In Progress' else 'secondary' }}">{{ assignment.status }}</span>{% endif %}
+        </div>
+        {% if task.description %}<p class="task-description">{{ task.description }}</p>{% endif %}
+        {% if task.due_date %}<div class="task-meta">Due {{ task.due_date.strftime('%d %b %Y') }}</div>{% endif %}
+        {% if task.reference_storage_name %}<a class="task-file-link" href="{{ url_for('main.download_work_task_file', task_id=task.id, kind='reference') }}">📎 {{ task.reference_original_name }}</a>{% endif %}
+        <a class="btn btn-sm btn-outline-primary mt-2" href="{{ url_for('main.work_tasks') }}">Open task details &amp; submissions</a>
+      </article>
+      {% else %}<p class="small muted mb-0">No project tasks have been created.</p>{% endfor %}
+    </section>
+  </div>
+  <div class="col-xl-7">
+    <section class="chat-layout team-chat-layout">
+      <aside class="chat-sidebar">
+        <div class="chat-search-form">
+          <div class="chat-contact-heading">Team conversations <span>{{ participants|length }}</span></div>
+          <p class="small muted mb-0">Group messages and private team chats.</p>
+        </div>
+        <nav class="chat-contact-list" aria-label="Team conversations">
+          <a class="chat-contact {{ 'active' if not selected_recipient else '' }}" href="{{ url_for('main.team_workspace', team_id=team.id) }}">
+            <span class="chat-avatar">#</span>
+            <span class="chat-contact-copy"><strong>Team group</strong><small>Everyone in {{ team.team_code }}</small></span>
+          </a>
+          {% for participant in participants if participant.id != current_user.id %}
+          <a class="chat-contact {{ 'active' if selected_recipient and selected_recipient.id == participant.id else '' }}" href="{{ url_for('main.team_workspace', team_id=team.id, recipient_id=participant.id) }}">
+            <span class="chat-avatar">{{ (participant.display_name or participant.username)[:1]|upper }}</span>
+            <span class="chat-contact-copy"><strong>{{ participant.display_name or participant.username }}</strong><small>{{ participant.role|replace('_', ' ')|title }}</small></span>
+          </a>
+          {% endfor %}
+        </nav>
+      </aside>
+      <div class="chat-conversation">
+        <header class="chat-conversation-header">
+          <span class="chat-avatar">{{ '#' if not selected_recipient else (selected_recipient.display_name or selected_recipient.username)[:1]|upper }}</span>
+          <div><h2>{{ 'Team group' if not selected_recipient else (selected_recipient.display_name or selected_recipient.username) }}</h2><p>{{ team.team_code }} · {{ 'All team participants' if not selected_recipient else selected_recipient.role|replace('_', ' ')|title }}</p></div>
+          <div class="chat-header-actions">
+            <div class="chat-font-controls" role="group" aria-label="Message font size">
+              <span class="chat-font-title">Font size</span>
+              <button type="button" data-chat-font-change="-1" aria-label="Decrease message font size">A−</button>
+              <span data-chat-font-label aria-live="polite">100%</span>
+              <button type="button" data-chat-font-change="1" aria-label="Increase message font size">A+</button>
+            </div>
+            <span class="chat-live-indicator"><i></i> Live</span>
+          </div>
+        </header>
+        <div class="chat-message-list"
+             data-chat-messages
+             data-messages-url="{{ url_for('main.team_chat_messages', team_id=team.id, recipient_id=selected_recipient.id if selected_recipient else None) }}"
+             data-send-url="{{ url_for('main.send_team_chat_message', team_id=team.id) }}"
+             aria-live="polite" aria-label="Chat messages">
+          <div class="chat-loading">Connecting to chat…</div>
+        </div>
+        <div class="chat-compose">
+          <form data-chat-form enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if selected_recipient %}<input type="hidden" name="recipient_id" value="{{ selected_recipient.id }}">{% endif %}
+            <input class="chat-file-input" id="chat-attachment" type="file" name="attachment" data-chat-file>
+            <label class="chat-attach-button" for="chat-attachment"><span aria-hidden="true">📎</span><span>Attach file</span></label>
+            <div class="chat-compose-main">
+              <div class="chat-attachment-preview" data-chat-attachment-preview hidden></div>
+              <textarea class="form-control" name="body" data-chat-body rows="1" maxlength="2000" placeholder="Type a message…" aria-label="Type a message"></textarea>
+            </div>
+            <button class="chat-send-button" type="submit" aria-label="Send message"><span aria-hidden="true">➤</span><span class="visually-hidden">Send</span></button>
+          </form>
+          <div class="chat-error" data-chat-error role="status" hidden></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/chat.js', v=2) }}" defer></script>
+{% endblock %}

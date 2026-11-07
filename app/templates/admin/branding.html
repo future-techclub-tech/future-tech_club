@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">MAKE IT YOUR EVENT</div><h2>College & club branding</h2><p>Your header and logos appear across the public site and dashboards.</p></div></div>
+<div class="row g-4">
+  <div class="col-lg-7">
+    <section class="surface-card">
+      <h3>Exhibition header</h3>
+      <p class="muted">Use your official college name and campus/location shown at the top of every page.</p>
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="form-label" for="college_header">College name</label>
+        <input class="form-control mb-3" id="college_header" name="college_header" value="{{ college_header }}" required maxlength="180">
+        <label class="form-label" for="college_subtitle">Campus / location line</label>
+        <input class="form-control mb-3" id="college_subtitle" name="college_subtitle" value="{{ college_subtitle }}" maxlength="100">
+        <label class="form-label" for="college_logo">College logo <span class="muted">(PNG, JPEG or WebP)</span></label>
+        <input class="form-control mb-3" id="college_logo" name="college_logo" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+        <label class="form-label" for="club_logo">Future-Tech Club logo <span class="muted">(PNG, JPEG or WebP)</span></label>
+        <input class="form-control mb-3" id="club_logo" name="club_logo" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+        <label class="form-label" for="college_banner_image">College header/banner image <span class="muted">(optional, PNG, JPEG or WebP)</span></label>
+        <input class="form-control mb-3" id="college_banner_image" name="college_banner_image" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+        <button class="btn btn-primary">Save branding</button>
+      </form>
+    </section>
+  </div>
+  <div class="col-lg-5">
+    <section class="surface-card">
+      <h3>Live header preview</h3>
+      <div class="team-card mt-3">
+        <div class="d-flex align-items-center gap-3">
+          {% if college_logo %}<img class="college-logo" src="{{ url_for('main.branding_asset', filename=college_logo) }}" alt="College logo preview">{% else %}<div class="logo-placeholder college-logo">NK</div>{% endif %}
+          <div class="flex-grow-1"><div class="dashboard-kicker">FUTURE-TECH CLUB PRESENTS</div><strong>{{ college_header }}</strong><div class="small muted">{{ college_subtitle }} · FUTURE-TECH INNOVISION 2026</div></div>
+          {% if club_logo %}<img class="club-logo" src="{{ url_for('main.branding_asset', filename=club_logo) }}" alt="Club logo preview">{% else %}<div class="logo-placeholder club-logo">FT</div>{% endif %}
+        </div>
+      </div>
+      <div class="small muted mt-3">Recommended: square transparent logos around 512 × 512 pixels. Image files must be PNG, JPEG or WebP.</div>
+      {% if college_banner_image %}<img class="college-header-preview mt-3" src="{{ url_for('main.branding_asset', filename=college_banner_image) }}" alt="College header preview">{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

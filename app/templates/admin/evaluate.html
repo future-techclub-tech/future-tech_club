@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Admin Evaluation – {{ team.team_code }}</h2>
+<p>{{ team.project_title }}</p>
+{% if proposals %}
+<section class="surface-card mb-3">
+  <h3>Mentor proposals</h3>
+  <p class="muted">Load a submitted proposal, adjust any marks, then approve it as the official 40-mark evaluation. The admin can also revise the saved score below.</p>
+  <div class="d-flex flex-wrap gap-2">
+    {% for proposal in proposals %}
+    {% if proposal.status == 'Pending' %}
+    <a class="btn btn-sm {{ 'btn-primary' if selected_proposal and proposal.id == selected_proposal.id else 'btn-outline-primary' }}"
+       href="{{ url_for('main.admin_evaluation', team_id=team.id, proposal_id=proposal.id) }}">
+      {{ proposal.mentor.display_name or proposal.mentor.username }} · {{ '%.1f'|format(proposal.total) }}/40 · Pending
+    </a>
+    {% else %}<span class="badge text-bg-secondary align-self-center">{{ proposal.mentor.display_name or proposal.mentor.username }} · {{ '%.1f'|format(proposal.total) }}/40 · {{ proposal.status }}</span>{% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% if ev and ev.finalized %}
+<div class="alert alert-info">Current approved admin score: <strong>{{ '%.1f'|format(ev.total) }} / 40</strong>. You can revise and approve it below.</div>
+{% endif %}
+<form method="post" class="panel">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if selected_proposal %}<input type="hidden" name="mentor_evaluation_id" value="{{ selected_proposal.id }}"><div class="alert alert-info">Reviewing {{ selected_proposal.mentor.display_name or selected_proposal.mentor.username }}'s proposal. Adjust values below if needed before approval.</div>{% endif %}
+  {% for key,label,max in [('development','Project Development & Progress',10),('teamwork','Teamwork & Individual Contribution',10),('documentation','Documentation & Preparation',8),('discipline','Discipline & Participation',6),('feasibility','Effort & Feasibility',6)] %}
+  <label class="form-label mt-2">{{ label }} ({{ max }})</label>
+  <input class="form-control" type="number" min="0" max="{{ max }}" step="0.5" name="{{ key }}" value="{{ form_ev|attr(key) if form_ev else 0 }}" required>
+  {% endfor %}
+  <button class="btn btn-primary mt-3">{% if selected_proposal %}Approve proposal and save admin score / 40{% elif ev and ev.finalized %}Update and approve admin score / 40{% else %}Save and approve admin score / 40{% endif %}</button>
+</form>
+{% endblock %}

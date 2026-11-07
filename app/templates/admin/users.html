@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block title %}User accounts · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">PEOPLE & ACCESS</div><h2>User account management</h2><p>Create accounts with their FT team access attached from the start.</p></div></div>
+<section class="surface-card mb-4">
+  <h3>Create or update account</h3>
+  <p class="muted">If a username already exists, you can change that account only by entering both a different role and a different password. Reusing the same role or password will not update it. To change only a password, use the account's Reset password action below.</p>
+  <form method="post" class="row g-3 mt-1" id="create-account-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="col-md-4"><label class="form-label" for="account-username">Username</label><input class="form-control" id="account-username" name="username" minlength="3" maxlength="80" required></div>
+    <div class="col-md-4"><label class="form-label" for="account-display-name">Display name</label><input class="form-control" id="account-display-name" name="display_name" maxlength="150"></div>
+    <div class="col-md-4"><label class="form-label" for="account-role">Role</label><select class="form-select" id="account-role" name="role">{% for role in ['team_leader','team_member','mentor','coordinator','judge','admin'] %}<option value="{{ role }}">{{ role|replace('_',' ')|title }}</option>{% endfor %}</select></div>
+    <div class="col-md-6"><label class="form-label" for="account-email">Email for task notifications</label><input class="form-control" type="email" id="account-email" name="email" maxlength="150"></div>
+    <div class="col-md-6"><label class="form-label" for="account-phone">Mobile number for SMS notifications</label><input class="form-control" type="tel" id="account-phone" name="phone" maxlength="40"></div>
+    <div class="col-md-6" id="team-account-fields"><label class="form-label" for="account-team">Assigned FT team</label><select class="form-select" id="account-team" name="team_id"><option value="">Select a team</option>{% for team in teams %}<option value="{{ team.id }}">{{ team.team_code }} · {{ team.project_title or 'Project pending' }}</option>{% endfor %}</select><div class="form-text">Required for team leaders and team members.</div></div>
+    <fieldset class="col-12" id="staff-team-fields" hidden>
+      <legend class="form-label">Assigned FT teams <span class="text-danger">*</span></legend>
+      <p class="form-text" id="staff-team-help">Assign one or two teams to a mentor or coordinator.</p>
+      <div class="row g-2">{% for team in teams %}
+        <div class="col-sm-6 col-lg-4"><label class="form-check assignment-option">
+          <input class="form-check-input staff-team-option" type="checkbox" name="team_ids" value="{{ team.id }}">
+          <span class="form-check-label"><strong>{{ team.team_code }}</strong> · {{ team.project_title or 'Project pending' }}{% if team.domain %}<span class="d-block small muted">{{ team.domain.name }}</span>{% endif %}</span>
+        </label></div>
+      {% endfor %}</div>
+    </fieldset>
+    <div class="col-md-3 member-account-field"><label class="form-label" for="member-full-name">Member full name</label><input class="form-control" id="member-full-name" name="full_name" maxlength="150"></div>
+    <div class="col-md-3 member-account-field"><label class="form-label" for="member-prn">PRN</label><input class="form-control" id="member-prn" name="prn" maxlength="60"></div>
+    <div class="col-md-6"><label class="form-label" for="account-password">New / temporary password</label><input class="form-control" type="password" id="account-password" name="password" minlength="4" required><div class="form-text">At least 4 characters. Existing accounts require a different password and a different role together.</div></div>
+    <div class="col-12"><button class="btn btn-primary">Create or update account</button></div>
+  </form>
+</section>
+<section class="surface-card" id="user-access">
+  <div class="section-heading mt-0"><div><h3>Accounts</h3><p>Team leaders and student members are restricted to their selected team; mentors and coordinators can each have one or two assigned teams.</p></div><a class="btn btn-outline-primary" href="{{ url_for('main.role_assignments') }}">Manage team assignments</a></div>
+  <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Username</th><th>Name</th><th>Role</th><th>FT team</th><th>Contact</th><th>Status</th><th>Account actions</th><th>Dashboard access</th></tr></thead><tbody>
+  {% for user in users %}<tr>
+    <td>{{ user.username }}</td><td>{{ user.display_name }}</td><td>{{ user.role|replace('_',' ')|title }}</td><td>{% if user.role in ['mentor', 'coordinator'] %}{{ assigned_team_labels.get(user.id, [])|join(', ') or 'Not assigned' }}{% else %}{{ team_labels.get(user.team_id, '—') }}{% endif %}</td>
+    <td><div class="small">{{ user.email or 'No email' }}</div><div class="small muted">{{ user.phone or 'No phone' }}</div><details class="mt-1"><summary class="btn btn-sm btn-outline-primary">Edit contact</summary><form method="post" action="{{ url_for('main.update_user_contact', user_id=user.id) }}" class="mt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="form-label small" for="user-email-{{ user.id }}">Email</label><input class="form-control form-control-sm mb-2" type="email" id="user-email-{{ user.id }}" name="email" maxlength="150" value="{{ user.email or '' }}"><label class="form-label small" for="user-phone-{{ user.id }}">Phone</label><input class="form-control form-control-sm mb-2" type="tel" id="user-phone-{{ user.id }}" name="phone" maxlength="40" value="{{ user.phone or '' }}"><button class="btn btn-sm btn-primary">Save contact</button></form></details></td>
+    <td>{{ 'Active' if user.active else 'Inactive' }}</td>
+    <td><form method="post" action="{{ url_for('main.toggle_user', user_id=user.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-secondary" {% if user.id == current_user.id %}disabled title="Use a different administrator account to deactivate this account"{% endif %}>{{ 'Deactivate' if user.active else 'Activate' }}</button></form>
+      <details class="d-inline-block ms-1"><summary class="btn btn-sm btn-outline-warning">Reset password</summary><form method="post" action="{{ url_for('main.reset_user_password', user_id=user.id) }}" class="mt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input class="form-control form-control-sm mb-1" type="password" name="password" minlength="4" placeholder="New password (minimum 4)" required><button class="btn btn-sm btn-warning">Reset</button></form></details>
+      {% if user.id != current_user.id %}
+      <form method="post" action="{{ url_for('main.delete_user', user_id=user.id) }}" class="d-inline" onsubmit="return confirm('Delete {{ user.username }}? This cannot be undone. Accounts with evaluation or attendance history must be deactivated instead.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+      </form>
+      {% endif %}
+    </td>
+    <td>
+      {% if user.id != current_user.id and user.role != 'admin' %}
+      <details>
+        <summary class="btn btn-sm btn-outline-primary">Open as user</summary>
+        <div class="border rounded p-2 mt-2" style="min-width:220px">
+          <div class="small muted mb-2">Admin authentication required. No fixed time limit; return to Admin when finished.</div>
+          <form method="post" action="{{ url_for('main.start_admin_impersonation', user_id=user.id) }}" class="mb-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="mode" value="view_only">
+            <button class="btn btn-sm btn-outline-secondary w-100">View-only</button>
+          </form>
+          <form method="post" action="{{ url_for('main.start_admin_impersonation', user_id=user.id) }}" onsubmit="return confirm('Enter full audited access as {{ user.username }}? All changes will be recorded under your admin account.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="mode" value="full_access">
+            <button class="btn btn-sm btn-warning w-100">Full access · audited</button>
+          </form>
+        </div>
+      </details>
+      {% elif user.id == current_user.id %}<span class="small muted">Current account</span>
+      {% else %}<span class="small muted">Admin account</span>{% endif %}
+    </td>
+  </tr>{% endfor %}
+  </tbody></table></div>
+</section>
+<script>
+  const accountRole = document.getElementById('account-role');
+  const teamFields = document.getElementById('team-account-fields');
+  const teamSelect = document.getElementById('account-team');
+  const staffTeamFields = document.getElementById('staff-team-fields');
+  const staffTeamHelp = document.getElementById('staff-team-help');
+  const staffTeamOptions = Array.from(document.querySelectorAll('.staff-team-option'));
+  const memberFields = document.querySelectorAll('.member-account-field');
+  const memberInputs = [document.getElementById('member-full-name'), document.getElementById('member-prn')];
+  function updateAccountFields() {
+    const needsTeam = ['team_leader', 'team_member'].includes(accountRole.value);
+    const needsStaffTeams = ['mentor', 'coordinator'].includes(accountRole.value);
+    const isMember = accountRole.value === 'team_member';
+    teamFields.hidden = !needsTeam;
+    teamSelect.required = needsTeam;
+    teamSelect.disabled = !needsTeam;
+    staffTeamFields.hidden = !needsStaffTeams;
+    staffTeamHelp.textContent = accountRole.value === 'coordinator'
+      ? 'Select one or two teams for this coordinator.'
+      : 'Select one or two teams for this mentor.';
+    staffTeamOptions.forEach((input) => { input.disabled = !needsStaffTeams; });
+    memberFields.forEach((field) => { field.hidden = !isMember; });
+    memberInputs.forEach((input) => { input.required = isMember; input.disabled = !isMember; });
+  }
+  staffTeamOptions.forEach((input) => input.addEventListener('change', () => {
+    const selected = staffTeamOptions.filter((option) => option.checked);
+    if (selected.length > 2) {
+      input.checked = false;
+      alert('Select no more than two FT teams.');
+    }
+  }));
+  document.getElementById('create-account-form').addEventListener('submit', (event) => {
+    const selectedCount = staffTeamOptions.filter((input) => input.checked).length;
+    const invalidAssignment = accountRole.value === 'mentor'
+      ? selectedCount < 1 || selectedCount > 2
+      : accountRole.value === 'coordinator'
+        && (selectedCount < 1 || selectedCount > 2);
+    if (invalidAssignment) {
+      event.preventDefault();
+      alert(accountRole.value === 'coordinator'
+        ? 'Select one or two FT teams for this coordinator.'
+        : 'Select one or two FT teams for this mentor.');
+    }
+  });
+  accountRole.addEventListener('change', updateAccountFields);
+  updateAccountFields();
+</script>
+{% endblock %}

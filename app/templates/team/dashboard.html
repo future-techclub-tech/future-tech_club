@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% from 'macros/rich_text.html' import rich_text_editor %}
+{% block content %}
+<section class="hero panel mb-4">
+  <div class="hero-content">
+    <div class="hero-kicker">TEAM PORTAL · {{ team.team_code }}</div>
+    <h1>Build it. Share it. Make it matter.</h1>
+    <p class="mb-0 text-white-50">Your team workspace for people, project details and exhibition submission.</p>
+  </div>
+</section>
+{% if new_member_credentials %}
+<div class="credential-card p-3 mb-4" role="status">
+  <strong>Member registered. Share these sign-in details with the member now; the password is shown only once.</strong>
+  <div class="mt-2">Username: <code>{{ new_member_credentials.username }}</code></div>
+  <div>Password: <code>{{ new_member_credentials.password }}</code></div>
+</div>
+{% endif %}
+<div class="dashboard-intro">
+  <div><div class="dashboard-kicker">TEAM LEADER DASHBOARD</div><h2>{{ team.name or team.team_code }}</h2><p>{{ team.domain.name if team.domain else 'Choose a domain with your event admin' }}</p></div>
+  <span class="badge rounded-pill fs-6 text-bg-{{ 'success' if team.registration_status == 'Approved' else 'secondary' }}">{{ team.registration_status }}</span>
+</div>
+<div class="mb-4"><a class="btn btn-primary" href="{{ url_for('main.team_workspace', team_id=team.id) }}">Team tasks &amp; chat</a></div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3"><div class="stat"><h2>{{ team.team_code }}</h2><div class="stat-label">Team ID</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat"><h2>{{ team.members|length }}</h2><div class="stat-label">Registered members</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat"><h2>{{ videos|length }}</h2><div class="stat-label">Project video</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat"><h2>{{ 'Ready' if team.project_title else 'Start' }}</h2><div class="stat-label">Project profile</div></div></div>
+</div>
+{% if domain_results_published %}
+<section class="surface-card mb-4">
+  <h3>{{ team.domain.name if team.domain else 'Domain' }} · Published ranking</h3>
+  <div class="table-responsive mt-3"><table class="table align-middle"><thead><tr><th>Rank</th><th>Team</th><th>Project</th><th>Total / 100</th></tr></thead><tbody>
+  {% for ranked_team, score in domain_rankings %}<tr class="{{ 'table-primary' if ranked_team.id == team.id else '' }}"><td>{{ loop.index }}</td><td>{{ ranked_team.team_code }}</td><td>{{ ranked_team.project_title or ranked_team.name }}</td><td>{% if final_leaderboard_published %}{{ '%.2f'|format(score) }}{% else %}Awaiting final leaderboard{% endif %}</td></tr>{% else %}<tr><td colspan="4">No eligible teams were available for ranking.</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if results %}<div class="info-chip mt-2">Your final leaderboard score: {{ '%.1f'|format(results.total) }} / 100</div>{% endif %}
+</section>
+{% endif %}
+{% if certificates %}
+<section class="surface-card mb-4">
+  <h3>My certificates</h3>
+  {% for certificate in certificates %}
+  <div class="member-row d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span>{{ certificate.type.name }} · {{ certificate.certificate_id }}</span>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.download_certificate', certificate_id=certificate.certificate_id) }}">Download PDF</a>
+      {% if has_certificate_word_source(certificate) %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.download_certificate_word', certificate_id=certificate.certificate_id) }}">Download Word</a>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <section class="surface-card mb-4">
+      <div class="section-heading mt-0"><div><h3>Your project story</h3><p>Keep this information clear and up to date for the exhibition team.</p></div></div>
+      <form method="post" action="{{ url_for('main.team_update') }}" class="row g-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for field,label in [('name','Team name'),('leader_name','Team leader'),('phone','Mobile'),('department','Department'),('year','Academic year'),('project_title','Project title')] %}
+        <div class="col-md-6"><label class="form-label" for="{{ field }}">{{ label }}</label><input class="form-control" id="{{ field }}" name="{{ field }}" value="{{ team|attr(field) or '' }}" {% if field in ['name','leader_name','project_title'] %}required{% endif %}></div>
+        {% endfor %}
+        {% for field,label in [('abstract','Project abstract'),('problem_statement','Problem statement'),('objectives','Project objectives'),('technologies','Technologies used')] %}
+        <div class="col-12">{{ rich_text_editor(field, label, team|attr(field) or '', 'project-' ~ field) }}</div>
+        {% endfor %}
+        <div class="col-12"><button class="btn btn-primary">Save team and project details</button></div>
+      </form>
+    </section>
+    <section class="surface-card mb-4">
+      <div class="section-heading mt-0"><div><h3>Project video</h3><p>Available to your team members and assigned mentor and coordinator.</p></div></div>
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('main.upload_video') }}" class="row align-items-end g-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="col-md-8"><label class="form-label" for="replace-video">Upload or replace your MP4 presentation</label><input class="form-control" id="replace-video" type="file" name="video" accept="video/mp4,.mp4" required></div>
+        <div class="col-md-4"><button class="btn btn-primary w-100">Upload video</button></div>
+      </form>
+      {% for video in videos %}<div class="mt-3"><a href="{{ url_for('main.view_project_video', video_id=video.id) }}">Watch submitted video</a><span class="muted small ms-2">{{ video.uploaded_at.strftime('%d %b %Y, %I:%M %p') }}</span></div>{% else %}<div class="empty-state">No project video uploaded yet.</div>{% endfor %}
+    </section>
+    <section class="surface-card">
+      <div class="section-heading mt-0"><div><h3>Project submissions</h3><p>Upload or replace your presentation slides and project documentation. Each file can be up to 25 MB.</p></div></div>
+      <div class="row g-3">
+        {% for submission_type,label,accept in [('ppt','PPT submission','.ppt,.pptx'),('documentation','Project documentation','.pdf,.doc,.docx')] %}
+        {% set submission = team.submissions|selectattr('submission_type','equalto',submission_type)|first %}
+        <div class="col-12">
+          <div class="p-3 border rounded-3">
+            <h4 class="h6">{{ label }}</h4>
+            {% if submission %}
+            <div class="small muted mb-2">Current file: <a href="{{ url_for('main.download_team_submission', submission_id=submission.id) }}">{{ submission.original_name }}</a> · {{ submission.uploaded_at.strftime('%d %b %Y, %I:%M %p') }}</div>
+            {% else %}
+            <div class="small muted mb-2">No file submitted yet.</div>
+            {% endif %}
+            <form method="post" enctype="multipart/form-data" action="{{ url_for('main.upload_team_submission', submission_type=submission_type) }}" class="row align-items-end g-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div class="col-md-8"><label class="form-label small" for="{{ submission_type }}-file">{{ 'Replace' if submission else 'Upload' }} {{ label|lower }}</label><input class="form-control" id="{{ submission_type }}-file" type="file" name="file" accept="{{ accept }}" required></div>
+              <div class="col-md-4"><button class="btn btn-outline-primary w-100">{{ 'Replace file' if submission else 'Submit file' }}</button></div>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+  <div class="col-xl-4">
+    <section class="surface-card mb-4">
+      <div class="section-heading mt-0"><div><h3>People make the project</h3><p>Register students with their unique PRN.</p></div></div>
+      <form method="post" action="{{ url_for('main.register_team_member') }}" class="row g-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for field,label,placeholder in [('full_name','Full name','Student name'),('prn','PRN number','Unique PRN'),('roll_number','Roll number','Roll number'),('department','Department','Department'),('year','Academic year','Academic year'),('email','Email','student@example.com'),('phone','Mobile number','Mobile number')] %}
+        <div class="col-12"><label class="form-label small mb-1" for="member_{{ field }}">{{ label }}</label><input class="form-control" id="member_{{ field }}" name="{{ field }}" placeholder="{{ placeholder }}" {% if field in ['full_name','prn'] %}required{% endif %}></div>
+        {% endfor %}
+        <div class="col-12 mt-3"><button class="btn btn-primary w-100">Add team member</button></div>
+      </form>
+      <div class="small muted mt-2">A separate login is created for each member. Share the generated password securely.</div>
+    </section>
+    <section class="surface-card">
+      <div class="section-heading mt-0"><div><h3>Registered students</h3><p>{{ team.members|length }} in your team</p></div></div>
+      {% for member in team.members %}
+      <div class="member-row">
+        <div class="member-name">{{ member.full_name }}</div>
+        <div class="small muted">{{ member.prn }}{% if member.roll_number %} · Roll {{ member.roll_number }}{% endif %}</div>
+        {% if member.email %}<div class="small">{{ member.email }}</div>{% endif %}
+      </div>
+      {% else %}<div class="empty-state">Your member list is ready for its first student.</div>{% endfor %}
+      <hr>
+      <div class="small muted">Mentor and coordinator are assigned by the event admin after registration review.</div>
+    </section>
+  </div>
+</div>
+{% endblock %}

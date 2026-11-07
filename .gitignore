@@ -1,0 +1,9 @@
+.env
+*.db
+instance/
+uploads/
+data/student_roster.csv
+__pycache__/
+*.py[cod]
+.venv/
+venv/

@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="dashboard-intro"><div><div class="dashboard-kicker">LIVE EXHIBITION WORKSPACE</div><h2>Team & project monitor</h2><p>Admin access to every team, registration, student detail, video, PPT and project documentation.</p></div><div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="{{ url_for('main.admin_users') }}">Manage all accounts</a><a class="btn btn-outline-primary" href="{{ url_for('main.admin_teams') }}">Edit team records</a></div></div>
+<div class="row g-3">
+{% for team in teams %}
+  <div class="col-12"><article class="team-card">
+    <div class="team-card-top"><div><div class="team-code">{{ team.team_code }} · {{ team.domain.name if team.domain else 'Domain pending' }}</div><h4>{{ team.project_title or team.name }}</h4><div class="muted">Team leader: {{ team.leader_name or 'Not submitted' }}{% if team.email %} · {{ team.email }}{% endif %}{% if team.phone %} · {{ team.phone }}{% endif %}</div></div><span class="badge rounded-pill text-bg-{{ 'success' if team.registration_status == 'Approved' else 'secondary' }}">{{ team.registration_status }}</span></div>
+    <div class="row g-4 mt-2">
+      <div class="col-lg-7"><div class="small muted">PROJECT ABSTRACT</div><div class="project-copy mt-1">{{ (team.abstract or 'Not submitted')|rich_text }}</div><div class="row mt-2"><div class="col-md-6"><div class="small muted">PROBLEM</div><div class="project-copy">{{ (team.problem_statement or '—')|rich_text }}</div></div><div class="col-md-6"><div class="small muted">OBJECTIVES</div><div class="project-copy">{{ (team.objectives or '—')|rich_text }}</div></div></div><div class="mt-2"><span class="small muted">TECHNOLOGIES</span><div class="project-copy">{{ (team.technologies or '—')|rich_text }}</div></div></div>
+      <div class="col-lg-5"><div class="small muted mb-2">REGISTERED MEMBERS · {{ team.members|length }}</div>{% for member in team.members %}<div class="member-row"><strong>{{ member.full_name }}</strong><div class="small muted">PRN {{ member.prn }}{% if member.roll_number %} · Roll {{ member.roll_number }}{% endif %} · {{ member.department }} {{ member.year }}</div><div class="small">{{ member.email }}{% if member.phone %} · {{ member.phone }}{% endif %}</div></div>{% else %}<span class="muted">No students registered.</span>{% endfor %}</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mt-3 pt-3 border-top">
+      {% for assignment in team.mentor_assignments %}<span class="info-chip">Mentor · {{ assignment.mentor.display_name or assignment.mentor.username }}</span>{% endfor %}
+      {% if team.domain %}{% for assignment in team.domain.coordinator_assignments %}<span class="info-chip">Coordinator · {{ assignment.coordinator.display_name or assignment.coordinator.username }}</span>{% endfor %}{% endif %}
+      {% for video in team.videos %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.view_project_video', video_id=video.id) }}">Watch submitted video</a>{% else %}<span class="info-chip">Video not submitted</span>{% endfor %}
+      {% for submission in team.submissions %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.download_team_submission', submission_id=submission.id) }}">{{ 'Download PPT' if submission.submission_type == 'ppt' else 'Download project documentation' }}</a>{% endfor %}
+      {% if not team.submissions|selectattr('submission_type','equalto','ppt')|first %}<span class="info-chip">PPT not submitted</span>{% endif %}
+      {% if not team.submissions|selectattr('submission_type','equalto','documentation')|first %}<span class="info-chip">Project documentation not submitted</span>{% endif %}
+      <a class="btn btn-sm btn-primary" href="{{ url_for('main.team_workspace', team_id=team.id) }}">Open team workspace</a>
+    </div>
+  </article></div>
+{% else %}<div class="col-12"><div class="empty-state">Team records appear here after setup.</div></div>{% endfor %}
+</div>
+{% endblock %}

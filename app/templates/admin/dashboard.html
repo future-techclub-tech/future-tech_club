@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero panel mb-4">
+  <div class="hero-content">
+    <div class="hero-kicker">EVENT CONTROL CENTER · 2026</div>
+    <h1>Good work starts with a great idea.</h1>
+    <p class="mb-0 text-white-50">Your live overview for teams, people, projects and exhibition progress.</p>
+  </div>
+</section>
+<div class="dashboard-intro">
+  <div><div class="dashboard-kicker">SUPER ADMIN</div><h2>Exhibition dashboard</h2><p>One place to keep every domain moving.</p></div>
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-primary" href="{{ url_for('main.certificates') }}">Certificates</a>
+    <a class="btn btn-primary" href="{{ url_for('main.admin_monitor') }}">Open team monitor <span aria-hidden="true">→</span></a>
+  </div>
+</div>
+<style>
+  a.stat { color: inherit; transition: transform .16s ease, box-shadow .16s ease; }
+  a.stat:hover, a.stat:focus-visible { color: inherit; transform: translateY(-2px); box-shadow: 0 12px 28px #071a3733; }
+</style>
+<div class="row g-3">
+  {% for label,value,section in [('Mentors',mentor_count,'mentors'),('Coordinators',coordinator_count,'coordinators'),('Teams',teams,'teams'),('Members',members,'members'),('Pending teams',pending,'pending-teams'),('Judge marks to approve',pending_judge_evaluations,'judge-pending'),('Judge evaluations & approval',evaluations,'judge-approved'),('Admin 40-mark entries',admin_evaluations,'admin-scores'),('Mentor proposals to review',pending_mentor_evaluations,'mentor-proposals'),('Project videos',videos,'videos'),('Winners',winners,'winners'),('100 marks Evaluation',teams,'scores')] %}
+  <div class="col-6 col-md-4 col-xl-2"><a class="stat h-100 d-block text-decoration-none" href="{{ url_for('main.admin_overview', section=section) }}"><h2>{{ value }}</h2><div class="stat-label">{{ label }}</div></a></div>
+  {% endfor %}
+</div>
+<div class="row g-3 mt-1">
+  <div class="col-xl-8">
+    <div class="section-heading"><div><h3>Team portfolio</h3><p>Registration, domain, members and video status at a glance.</p></div><span class="info-chip">{{ teams }} teams · {{ domains|length }} domains</span></div>
+    <div class="surface-card p-0 overflow-hidden">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Team</th><th>Domain</th><th>Project</th><th>Members</th><th>Video</th><th>Status</th></tr></thead>
+          <tbody>{% for team in all_teams %}
+          <tr>
+            <td><strong>{{ team.team_code }}</strong><div class="small muted">{{ team.leader_name or team.name }}</div></td>
+            <td>{{ team.domain.code if team.domain else '—' }}</td>
+            <td>{{ team.project_title or 'Not submitted' }}</td>
+            <td>{{ team.members|length }}</td>
+            <td>{% if team.videos %}<a href="{{ url_for('main.view_project_video', video_id=team.videos[0].id) }}">Watch</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td><span class="badge rounded-pill text-bg-{{ 'success' if team.registration_status == 'Approved' else 'secondary' }}">{{ team.registration_status }}</span></td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="section-heading"><div><h3>Manage the event</h3><p>Quick links for your next action.</p></div></div>
+    <div class="surface-card">
+      <div class="d-grid gap-2">
+        <a class="btn btn-outline-primary text-start" href="{{ url_for('main.admin_teams') }}">◈ &nbsp; Teams, projects, add & delete</a>
+        <a class="btn btn-outline-primary text-start" href="{{ url_for('main.role_assignments') }}">◎ &nbsp; Mentor and coordinator assignments</a>
+        <a class="btn btn-outline-primary text-start" href="{{ url_for('main.judge_assignments') }}">⌁ &nbsp; Judge assignments</a>
+        <a class="btn btn-outline-primary text-start" href="{{ url_for('main.branding') }}">✧ &nbsp; College and club branding</a>
+        <a class="btn btn-outline-primary text-start" href="{{ url_for('main.certificates') }}">▧ &nbsp; Certificate Management</a>
+        <a class="btn btn-outline-primary text-start" href="{{ url_for('main.announcements') }}">↗ &nbsp; Announcements</a>
+        <a class="btn btn-outline-primary text-start" href="{{ url_for('main.admin_data') }}">▤ &nbsp; Data & backups</a>
+      </div>
+      <hr>
+      <div class="small muted mb-2">RESULTS WORKFLOW</div>
+      <form method="post" action="{{ url_for('main.nominate') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-warning w-100" {% if nominations_published %}disabled{% endif %}>Generate up to 3 teams per domain</button></form>
+      <form method="post" action="{{ url_for('main.publish_nominations') }}" class="mt-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-success w-100" {% if not nominations_generated or nominations_published %}disabled{% endif %}>Publish and freeze nominations</button></form>
+      {% if nominations_published %}<div class="small text-success mt-2">Nominations are published and frozen. Cancel publication to correct marks or regenerate the results.</div><form method="post" action="{{ url_for('main.cancel_published_results') }}" class="mt-2" onsubmit="return confirm('Cancel all published nominations, domain results, and the final winner announcement? This also clears selected winners and publication notifications. Submitted scores will be kept.');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-outline-danger w-100">Cancel published nominations and results</button></form>{% else %}<div class="small muted mt-2">Review submitted judge marks and mentor proposals; admin-entered marks count immediately. Approval is required before generating nominations.</div>{% endif %}
+      <hr>
+      <div class="small muted mb-2">FINAL WINNERS & PUBLIC LEADERBOARD</div>
+      {% if final_leaderboard_published %}
+      <div class="alert alert-success py-2">Final winners and leaderboard are public.</div>
+      {% else %}
+      <p class="small muted">Select one winner in every domain first. This admin action publishes the winner announcement and public leaderboard.</p>
+      <form method="post" action="{{ url_for('main.publish_final_leaderboard') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-primary w-100" {% if winners != 5 %}disabled{% endif %}>Announce winners & publish leaderboard</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-link px-0 mt-2" href="{{ url_for('main.rankings') }}">Preview leaderboard{% if not final_leaderboard_published %} (admin only){% endif %}</a>
+    </div>
+  </div>
+</div>
+<div class="section-heading mt-4"><div><h3>Mentor 40-mark proposals</h3><p>Review and approve or adjust proposals before they become final admin scores.</p></div></div>
+<section class="surface-card p-0 overflow-hidden mb-4"><div class="table-responsive"><table class="table table-hover mb-0 align-middle">
+  <thead><tr><th>Team</th><th>Mentor</th><th>Proposed score</th><th>Submitted</th><th></th></tr></thead><tbody>
+  {% for proposal in mentor_evaluations if proposal.status == 'Pending' %}<tr>
+    <td>{{ proposal.team.team_code }} · {{ proposal.team.project_title or proposal.team.name }}</td>
+    <td>{{ proposal.mentor.display_name or proposal.mentor.username }}</td>
+    <td>{{ '%.1f'|format(proposal.total) }} / 40</td>
+    <td>{{ proposal.submitted_at.strftime('%d %b %Y %H:%M') }}</td>
+    <td><a class="btn btn-sm btn-primary" href="{{ url_for('main.admin_evaluation', team_id=proposal.team_id, proposal_id=proposal.id) }}">Review / adjust</a></td>
+  </tr>{% else %}<tr><td colspan="5" class="muted text-center py-4">No mentor marks are waiting for approval. New submissions will appear here. <a href="{{ url_for('main.admin_overview', section='scores') }}">Open 100 marks Evaluation</a></td></tr>{% endfor %}
+  </tbody></table></div></section>
+{% if nominations_published %}<div class="alert alert-warning mt-4">Nominations are already published. These pending marks cannot be approved without changing the frozen results; request a formal correction before proceeding.</div>{% endif %}
+<div class="section-heading mt-4"><div><h3>Judge marks awaiting approval</h3><p>Review submitted marks before they count toward team rankings. Returning a submission reopens it for the judge to correct.</p></div></div>
+<section class="surface-card p-0 overflow-hidden mb-4"><div class="table-responsive"><table class="table table-hover mb-0 align-middle">
+  <thead><tr><th>Team</th><th>Judge</th><th>Marks / 60</th><th>Criteria breakdown</th><th>Submitted</th><th>Review</th></tr></thead><tbody>
+  {% for evaluation in judge_evaluations_pending_review %}<tr>
+    <td>{{ evaluation.team.team_code }} · {{ evaluation.team.project_title or evaluation.team.name }}</td>
+    <td>{{ evaluation.judge.display_name or evaluation.judge.username }}</td>
+    <td><strong>{{ '%.1f'|format(evaluation.total) }} / 60</strong></td>
+    <td class="small">{% for key,label,max in [('problem','Problem',8),('innovation','Innovation',10),('implementation','Implementation',12),('prototype','Prototype',15),('impact','Impact',5),('presentation','Presentation',5),('qa','Q&A',5)] %}{{ label }} {{ '%.1f'|format(evaluation|attr(key)) }}/{{ max }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+    <td>{{ evaluation.submitted_at.strftime('%d %b %Y %H:%M') }}</td>
+    <td class="text-nowrap">
+      <form method="post" action="{{ url_for('main.approve_judge_evaluation', evaluation_id=evaluation.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-success" {% if nominations_published %}disabled{% endif %}>Approve marks</button></form>
+      <form method="post" action="{{ url_for('main.return_judge_evaluation', evaluation_id=evaluation.id) }}" class="d-inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-outline-warning" {% if nominations_published %}disabled{% endif %}>Return</button></form>
+    </td>
+  </tr>{% else %}<tr><td colspan="6" class="muted text-center py-4">No judge marks are waiting for approval. New submissions will appear here. <a href="{{ url_for('main.admin_overview', section='scores') }}">Open 100 marks Evaluation</a></td></tr>{% endfor %}
+  </tbody></table></div></section>
+<div class="section-heading mt-4"><div><h3>Evaluation entry status</h3><p>Admin-approved judge progress and 40-mark entries for every team; team leaders and members cannot see these staff scores.</p></div></div>
+<section class="surface-card p-0 overflow-hidden mb-4"><div class="table-responsive"><table class="table table-hover mb-0 align-middle">
+  <thead><tr><th>Team</th><th>Domain</th><th>Judge evaluations</th><th>Admin score / 40</th><th>Mentor proposal</th><th>Action</th></tr></thead><tbody>
+  {% for entry in evaluation_progress %}<tr>
+    <td>{{ entry.team.team_code }}</td><td>{{ entry.team.domain.code if entry.team.domain else 'Unassigned' }}</td>
+    <td>{% if entry.assigned_judges %}{{ entry.finalized_judges }} / {{ entry.assigned_judges }} approved{% if entry.submitted_judges > entry.finalized_judges %}<div class="small text-warning">{{ entry.submitted_judges - entry.finalized_judges }} awaiting admin approval</div>{% endif %}{% else %}No judges assigned{% endif %}</td>
+    <td>{% if entry.admin_score and entry.admin_score.finalized %}<strong>{{ '%.1f'|format(entry.admin_score.total) }} / 40</strong> · Final{% elif entry.admin_score %}{{ '%.1f'|format(entry.admin_score.total) }} / 40 · Reopened{% else %}Not entered{% endif %}</td>
+    <td>{% if entry.mentor_proposal %}{{ '%.1f'|format(entry.mentor_proposal.total) }} / 40 · {{ entry.mentor_proposal.status }}{% else %}Not submitted{% endif %}</td>
+    <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.admin_evaluation', team_id=entry.team.id) }}">Review / edit</a></td>
+  </tr>{% endfor %}
+  </tbody></table></div></section>
+<div class="section-heading mt-4"><div><h3>Domain rankings & result announcements</h3><p>Eligible teams are ranked by final score. Empty or smaller domains do not block nomination generation.</p></div></div>
+{% for domain,rows in ranked_domains %}
+<section class="surface-card mb-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div><h4 class="mb-1">{{ domain.code }} · {{ domain.name }}</h4><div class="small muted">{{ rows|length }} fully evaluated eligible team(s) · {{ 'Announced' if domain_publications.get(domain.id) else 'Not announced' }}</div></div>
+    {% if nominations_published %}
+    <form method="post" action="{{ url_for('main.publish_domain_result', domain_id=domain.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-sm btn-primary" {% if domain_publications.get(domain.id) %}disabled{% endif %}>{{ 'Results announced' if domain_publications.get(domain.id) else 'Announce this domain result' }}</button></form>
+    {% endif %}
+  </div>
+  <div class="table-responsive mt-3"><table class="table table-sm align-middle mb-0"><thead><tr><th>Rank</th><th>Team</th><th>Project</th><th>Admin / 40</th><th>Total / 100</th><th>Nominations</th></tr></thead><tbody>
+  {% for team,score in rows %}{% set admin_score = admin_score_by_team.get(team.id) %}{% set nomination = team.nominations|first %}<tr><td>{{ loop.index }}</td><td>{{ team.team_code }}</td><td>{{ team.project_title or team.name }}</td><td>{{ '%.1f'|format(admin_score.total) if admin_score else '—' }}</td><td>{{ '%.2f'|format(score) }}</td><td>{% if nomination and nomination.published %}Nominated · {{ nomination.rank }}{% elif nomination %}Selected · rank {{ nomination.rank }} (draft){% else %}Not selected{% endif %}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">No approved team has all assigned judge evaluations and a finalized admin score yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endfor %}
+<div class="section-heading"><div><h3>Five technical domains</h3><p>Uneven team allocations are supported.</p></div></div>
+<div class="row g-3">{% for domain in domains %}<div class="col-sm-6 col-xl"><div class="team-card"><div class="team-code">{{ domain.code }}</div><h4>{{ domain.name }}</h4><span class="info-chip">{{ domain.teams|length }} teams</span></div></div>{% endfor %}</div>
+{% endblock %}

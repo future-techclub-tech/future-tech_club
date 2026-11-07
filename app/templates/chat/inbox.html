@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Admin chats' if administrator else 'Messages' }} · FUTURE-TECH INNOVISION 2026{% endblock %}
+{% block content %}
+<section class="chat-page-heading mb-4">
+  <div class="dashboard-kicker">{{ 'ADMIN COMMUNICATIONS' if administrator else 'DIRECT MESSAGES' }}</div>
+  <h1>{{ 'Search and message any account' if administrator else 'Messages' }}</h1>
+  <p class="mb-0">{{ 'Search active accounts by name, username, email, or role. Conversations are private to the participants.' if administrator else 'Chat privately with the administrators and project participants available to your role. New messages refresh automatically.' }}</p>
+</section>
+<section class="chat-layout">
+  <aside class="chat-sidebar">
+    {% if administrator %}
+    <form method="get" action="{{ url_for(search_endpoint) }}" class="chat-search-form">
+      <label class="form-label" for="chat-contact-search">Find any active account</label>
+      <div class="input-group mb-2">
+        <input class="form-control" id="chat-contact-search" name="q" value="{{ search }}" maxlength="100" placeholder="Name, username, email, role">
+        <button class="btn btn-primary" type="submit" aria-label="Search accounts">Search</button>
+      </div>
+      <label class="visually-hidden" for="chat-role-filter">Filter conversations by role</label>
+      <select class="form-select form-select-sm" id="chat-role-filter" name="role" onchange="this.form.submit()">
+        <option value="">All roles</option>
+        {% for role in available_roles %}
+        <option value="{{ role }}" {% if role_filter == role %}selected{% endif %}>{{ role|replace('_', ' ')|title }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <div class="chat-contact-heading">{{ 'Search results' if search else 'People' }} <span>{{ contacts|length }}</span></div>
+    {% else %}
+    <div class="chat-search-form">
+      <div class="chat-contact-heading">People <span>{{ contacts|length }}</span></div>
+      <p class="small muted mb-0">Select a person to open your private conversation.</p>
+    </div>
+    {% endif %}
+    <nav class="chat-contact-list" aria-label="Conversations">
+      {% for contact in contacts %}
+      <a class="chat-contact {{ 'active' if selected_user and selected_user.id == contact.id else '' }}"
+         href="{{ url_for(search_endpoint, q=search, role=role_filter, user_id=contact.id) if administrator else url_for(search_endpoint, user_id=contact.id) }}">
+        <span class="chat-avatar">{{ (contact.display_name or contact.username)[:1]|upper }}</span>
+        <span class="chat-contact-copy">
+          <strong>{{ contact.display_name or contact.username }}</strong>
+          <small>{{ contact.username }}{% if administrator %} · {{ contact.role|replace('_', ' ')|title }}{% endif %}</small>
+        </span>
+        <span class="chat-online-dot" aria-label="Active"></span>
+      </a>
+      {% else %}
+      <div class="chat-no-contacts">{{ 'No accounts match your search.' if administrator else 'No eligible active chat contacts are available.' }}</div>
+      {% endfor %}
+      {% if administrator and search and contacts|length == 50 %}
+      <p class="small muted px-3 mt-2">Showing the first 50 results. Refine your search to find other accounts.</p>
+      {% endif %}
+    </nav>
+  </aside>
+  <section class="chat-conversation">
+    {% if selected_user %}
+    <header class="chat-conversation-header">
+      <span class="chat-avatar">{{ (selected_user.display_name or selected_user.username)[:1]|upper }}</span>
+      <div>
+        <h2>{{ selected_user.display_name or selected_user.username }}</h2>
+        <p>{{ selected_user.username }} · {{ selected_user.role|replace('_', ' ')|title }}</p>
+      </div>
+      <div class="chat-header-actions">
+        <div class="chat-font-controls" role="group" aria-label="Message font size">
+          <span class="chat-font-title">Font size</span>
+          <button type="button" data-chat-font-change="-1" aria-label="Decrease message font size">A−</button>
+          <span data-chat-font-label aria-live="polite">100%</span>
+          <button type="button" data-chat-font-change="1" aria-label="Increase message font size">A+</button>
+        </div>
+        <span class="chat-live-indicator"><i></i> Live</span>
+      </div>
+    </header>
+    <div class="chat-message-list"
+         data-chat-messages
+         data-messages-url="{{ url_for(messages_endpoint, user_id=selected_user.id) if administrator else url_for(messages_endpoint, admin_id=selected_user.id) }}"
+         data-send-url="{{ url_for('main.send_admin_chat_message_route', user_id=selected_user.id) if administrator else url_for('main.send_user_admin_chat_message', admin_id=selected_user.id) }}"
+         aria-live="polite"
+         aria-label="Chat messages">
+      <div class="chat-loading">Loading conversation…</div>
+    </div>
+    <div class="chat-compose">
+      <form data-chat-form enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input class="chat-file-input" id="chat-attachment" type="file" name="attachment" data-chat-file>
+        <label class="chat-attach-button" for="chat-attachment">
+          <span aria-hidden="true">📎</span><span>Attach file</span>
+        </label>
+        <div class="chat-compose-main">
+          <div class="chat-attachment-preview" data-chat-attachment-preview hidden></div>
+          <textarea class="form-control" name="body" data-chat-body rows="1" maxlength="2000" placeholder="Type a message…" aria-label="Type a message"></textarea>
+        </div>
+        <button class="chat-send-button" type="submit" aria-label="Send message"><span aria-hidden="true">➤</span><span class="visually-hidden">Send</span></button>
+      </form>
+      <div class="chat-error" data-chat-error role="status" hidden></div>
+    </div>
+    {% else %}
+    <div class="chat-empty-state">
+      <div class="chat-empty-icon" aria-hidden="true">✉</div>
+      <h2>{{ 'Choose a person to start chatting' if administrator else 'Choose a person' }}</h2>
+      <p>{{ 'Search by name, username, email, or role to open a private conversation.' if administrator else 'Your messages and attached files will appear here.' }}</p>
+    </div>
+    {% endif %}
+  </section>
+</section>
+<script src="{{ url_for('static', filename='js/chat.js', v=2) }}" defer></script>
+{% endblock %}
