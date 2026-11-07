@@ -5,16 +5,16 @@
   <div>
     <div class="dashboard-kicker">ADMINISTRATION</div>
     <h2>Certificate studio</h2>
-    <p>Create five certificate types, map Excel/CSV columns to the design, generate recipient drafts, then approve and dispatch them to the intended users.</p>
+    <p>Upload a one-page Word certificate or a PDF/image design, map recipient fields from Excel/CSV, generate Word and PDF certificates, then approve and dispatch them.</p>
   </div>
 </div>
 <div class="alert alert-info">
-  Upload a certificate background as PDF, PNG, or JPEG. Use cover areas to mask old sample details, then add editable fields. Upload a Word source to preview its text and map placeholders such as <code>&lt;Name&gt;</code>, <code>&lt;Role&gt;</code>, <code>&lt;Domain&gt;</code>, <code>&lt;Event&gt;</code>, <code>&lt;Day&gt;</code>, <code>&lt;Date&gt;</code>, and <code>&lt;Venue&gt;</code>. Each personalized Word download receives its certificate number and a unique verification QR code at the lower-left corner. Text already printed in a PDF/image is not detected automatically; place a cover area over it. Canva/CorelDRAW project files remain editable in those applications.
+  A Word DOCX can be used by itself; the studio renders a PDF preview and creates personalized Word and PDF certificates. Map existing text by selecting it in the Word text preview, or use placeholders such as <code>&lt;Name&gt;</code>, <code>&lt;Role&gt;</code>, and <code>&lt;Domain&gt;</code>. A DOCX certificate must render to one page. PDF/image backgrounds remain supported for PDF-based templates.
 </div>
 
 <section class="surface-card mb-4">
   <h3>Create a certificate template</h3>
-  <form method="post" enctype="multipart/form-data" data-certificate-editor data-create-editor data-docx-preview-url="{{ url_for('main.certificate_template_docx_preview') }}">
+  <form method="post" enctype="multipart/form-data" data-certificate-editor data-create-editor data-docx-preview-url="{{ url_for('main.certificate_template_docx_preview') }}" data-docx-preview-pdf-url="{{ url_for('main.certificate_template_docx_preview_pdf') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="template">
     <input type="hidden" name="positions_json" data-positions value="{{ default_positions|tojson }}">
@@ -35,15 +35,30 @@
       <div class="col-md-4"><label class="form-label">Event name</label><input class="form-control" name="event_name" maxlength="200" value="FUTURE-TECH INNOVISION 2026" required></div>
       <div class="col-md-4"><label class="form-label">Date</label><input class="form-control" name="event_date" maxlength="80" required></div>
       <div class="col-md-4"><label class="form-label">Venue</label><input class="form-control" name="event_venue" maxlength="200" required></div>
-      <div class="col-md-6">
-        <label class="form-label">Certificate background (PDF, PNG, JPEG)</label>
-        <input class="form-control" type="file" name="template_file" accept=".pdf,.png,.jpg,.jpeg" required data-background-file>
+      <div class="col-md-6" data-background-picker>
+        <label class="form-label">PDF/image background</label>
+        <input class="form-control" type="file" name="template_file" accept=".pdf,.png,.jpg,.jpeg" data-background-file>
       </div>
       <div class="col-md-6">
         <label class="form-label">Word source file (optional)</label>
         <input class="form-control" type="file" name="template_docx" accept=".docx" data-docx-file>
-        <div class="form-text">Choose the DOCX to preview its text and map placeholders. Export the design as PDF/image for PDF certificates.</div>
+        <div class="form-text">A Word template alone is enough. Preview its rendered page and select existing text to map to recipient data.</div>
+        <div class="form-check mt-2" data-separate-background-toggle hidden>
+          <input class="form-check-input" type="checkbox" id="use-separate-certificate-background" data-use-separate-background>
+          <label class="form-check-label" for="use-separate-certificate-background">Also use a separate PDF/image background</label>
+        </div>
         <div class="certificate-docx-preview mt-2" data-docx-preview aria-live="polite"></div>
+        <div class="certificate-docx-mapping mt-2" data-docx-mapping hidden>
+          <label class="form-label">Replace selected Word text with
+            <select class="form-select" data-docx-selected-field>
+              {% for field,label in [('recipient_name','Name'),('recipient_role','Role'),('domain_name','Domain'),('event_name','Event'),('event_day','Day'),('event_date','Date'),('event_venue','Venue'),('team_id','Team ID'),('project_title','Project title'),('certificate_id','Certificate number'),('verification_url','Verification URL')] %}
+              <option value="{{ field }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="button" class="btn btn-sm btn-outline-primary" data-docx-map-selected>Map selected text</button>
+          <span class="small ms-2" data-docx-selection-status>Select text from the Word paragraph preview below.</span>
+        </div>
       </div>
     </div>
     <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end my-3">
@@ -74,9 +89,10 @@
     </div>
     <div class="certificate-stage mb-3" data-stage data-empty="true">
       <div class="certificate-art" data-art></div>
+      <button type="button" class="btn btn-sm btn-light certificate-fullscreen-toggle" data-preview-fullscreen aria-pressed="false">Full screen preview</button>
       <div class="certificate-markers" data-markers></div>
     </div>
-    <div class="form-text mb-3">Drag the QR marker to set its position for both PDF and Word output. The certificate number is placed directly below the QR. Select a CSV/Excel field to set its font, color, bold, and italic styling in the PDF; DOCX placeholders have the same per-field styling options in the text preview.</div>
+    <div class="form-text mb-3">For Word templates, the QR and certificate number are placed at the selected page position. PDF/image templates use the draggable field positions.</div>
     <button class="btn btn-primary">Save draft template</button>
   </form>
 </section>
@@ -88,9 +104,26 @@
     <summary class="fw-semibold">{{ template.certificate_type.name }} · {{ template.event_name }} · {% if template.approved %}Approved{% else %}Draft{% endif %}</summary>
     <div class="row g-3 mt-2">
       <div class="col-lg-7">
-        <form method="post" action="{{ url_for('main.edit_certificate_template', template_id=template.id) }}" enctype="multipart/form-data" data-certificate-editor data-edit-editor data-docx-preview-url="{{ url_for('main.certificate_template_docx_preview') }}">
+        <form method="post" action="{{ url_for('main.edit_certificate_template', template_id=template.id) }}" enctype="multipart/form-data" data-certificate-editor data-edit-editor data-docx-preview-url="{{ url_for('main.certificate_template_docx_preview') }}" data-docx-preview-pdf-url="{{ url_for('main.certificate_template_docx_preview_pdf') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="positions_json" data-positions value="{{ template.positions_json }}">
+          {% if template.document_file %}
+          <div class="onlyoffice-editor-panel my-3" data-onlyoffice-editor data-config-url="{{ url_for('main.certificate_template_editor_config', template_id=template.id) }}" data-status-url="{{ url_for('main.certificate_template_editor_status', template_id=template.id) }}">
+            {% if onlyoffice_configured %}
+            <p class="form-text">Edit the complete Word certificate here, including its text, images, fonts, and layout. Save in the editor, then close it to update the template preview. Saving edits returns this template to draft and requires approval again.</p>
+            <button type="button" class="btn btn-outline-primary" data-onlyoffice-open>Edit Word certificate here</button>
+            <div class="mt-3" data-onlyoffice-workspace hidden>
+              <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                <button type="button" class="btn btn-success" data-onlyoffice-close>Close editor and sync changes</button>
+                <span class="small" role="status" aria-live="polite" data-onlyoffice-status></span>
+              </div>
+              <div class="onlyoffice-document" id="onlyoffice-document-{{ template.id }}" data-onlyoffice-document></div>
+            </div>
+            {% else %}
+            <p class="form-text mb-0">The in-page Word editor will be available after the ONLYOFFICE service is deployed and configured.</p>
+            {% endif %}
+          </div>
+          {% endif %}
           <input type="hidden" value="{{ template.certificate_type.name }}" data-certificate-type data-fields="{{ certificate_type_fields[template.certificate_type.name]|tojson|forceescape }}" data-roles="{{ certificate_role_options[template.certificate_type.name]|tojson|forceescape }}">
           <div class="row g-2">
             <div class="col-md-4"><label class="form-label">Event name</label><input class="form-control" name="event_name" value="{{ template.event_name }}" required></div>
@@ -98,7 +131,19 @@
             <div class="col-md-4"><label class="form-label">Venue</label><input class="form-control" name="event_venue" value="{{ template.event_venue }}" required></div>
             <div class="col-md-6"><label class="form-label">Recipient role</label><select class="form-select" name="recipient_role" data-recipient-role data-selected-role="{{ template.recipient_role }}"></select></div>
             <div class="col-md-6"><label class="form-label">Replace background (optional)</label><input class="form-control" type="file" name="template_file" accept=".pdf,.png,.jpg,.jpeg" data-background-file></div>
-            <div class="col-md-6"><label class="form-label">Replace Word source (optional)</label><input class="form-control" type="file" name="template_docx" accept=".docx" data-docx-file><div class="form-text">Preview the DOCX text, map its placeholders, and save. Each Word download receives its recipient details and QR code.</div><div class="certificate-docx-preview mt-2" data-docx-preview aria-live="polite"></div></div>
+            <div class="col-md-6"><label class="form-label">Replace Word source (optional)</label><input class="form-control" type="file" name="template_docx" accept=".docx" data-docx-file><div class="form-text">Preview the rendered page, select existing text to map recipient data, or map Word placeholders.</div><div class="certificate-docx-preview mt-2" data-docx-preview aria-live="polite"></div>
+              <div class="certificate-docx-mapping mt-2" data-docx-mapping hidden>
+                <label class="form-label">Replace selected Word text with
+                  <select class="form-select" data-docx-selected-field>
+                    {% for field,label in [('recipient_name','Name'),('recipient_role','Role'),('domain_name','Domain'),('event_name','Event'),('event_day','Day'),('event_date','Date'),('event_venue','Venue'),('team_id','Team ID'),('project_title','Project title'),('certificate_id','Certificate number'),('verification_url','Verification URL')] %}
+                    <option value="{{ field }}">{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-docx-map-selected>Map selected text</button>
+                <span class="small ms-2" data-docx-selection-status>Select text from the Word paragraph preview below.</span>
+              </div>
+            </div>
           </div>
           <div class="certificate-toolbar d-flex flex-wrap gap-2 align-items-end my-3">
             <button type="button" class="btn btn-outline-primary" data-add-text>Add text</button>
@@ -128,6 +173,7 @@
           </div>
           <div class="certificate-stage mb-3" data-stage data-background-url="{{ url_for('main.certificate_template_background_file', template_id=template.id) }}" data-background-file-name="{{ template.background_file }}">
             <div class="certificate-art" data-art></div>
+            <button type="button" class="btn btn-sm btn-light certificate-fullscreen-toggle" data-preview-fullscreen aria-pressed="false">Full screen preview</button>
             <div class="certificate-markers" data-markers></div>
           </div>
           <button class="btn btn-primary">Save and review</button>
@@ -366,11 +412,17 @@
     background: #244b89;
     color: #fff;
   }
-  .certificate-stage { position: relative; width: min(100%, 720px); aspect-ratio: 1.414 / 1; overflow: hidden; background: #fff; border: 2px solid #8496b0; border-radius: .4rem; touch-action: none; }
+  .certificate-stage { position: relative; width: 100%; aspect-ratio: 1.414 / 1; overflow: hidden; background: #fff; border: 2px solid #8496b0; border-radius: .4rem; touch-action: none; }
+  .certificate-stage:fullscreen { position: fixed; inset: 0; width: min(100vw, 141.4vh); height: min(100vh, 70.72vw); max-width: none; margin: auto; aspect-ratio: 1.414 / 1; overflow: hidden; border: 0; border-radius: 0; background: #fff; }
+  .certificate-fullscreen-toggle { position: absolute; z-index: 4; top: .75rem; right: .75rem; }
   .certificate-art,.certificate-art img,.certificate-art iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; object-fit: fill; }
-  .certificate-art:empty::before { content: "Upload a PDF or image to preview your certificate design"; position: absolute; inset: 0; display: grid; place-items: center; padding: 1.5rem; color: #34445d; font-size: clamp(.9rem, 2vw, 1.1rem); font-weight: 700; text-align: center; }
-  .certificate-docx-preview { max-height: 340px; overflow: auto; padding: .75rem; border: 1px solid #c8d3e2; border-radius: .5rem; background: #f7f9fc; color: #17233b; }
+  .certificate-art:empty::before { content: "Optional PDF/image background · Word preview appears above"; position: absolute; inset: 0; display: grid; place-items: center; padding: 1.5rem; color: #34445d; font-size: clamp(.9rem, 2vw, 1.1rem); font-weight: 700; text-align: center; }
+  .certificate-docx-preview { max-height: 620px; overflow: auto; padding: .75rem; border: 1px solid #c8d3e2; border-radius: .5rem; background: #f7f9fc; color: #17233b; }
   .certificate-docx-preview:empty { display: none; }
+  .certificate-docx-pdf-preview { display: block; width: 100%; height: 480px; border: 1px solid #c8d3e2; background: #fff; }
+  .onlyoffice-editor-panel { padding: 1rem; border: 1px solid #c8d3e2; border-radius: .5rem; background: #f7f9fc; }
+  .onlyoffice-document { width: 100%; height: min(78vh, 900px); min-height: 520px; background: #fff; border: 1px solid #c8d3e2; }
+  .certificate-docx-selectable { user-select: text; cursor: text; }
   .certificate-docx-line { padding: .5rem 0; border-bottom: 1px solid #dfe5ee; overflow-wrap: anywhere; }
   .certificate-docx-token { display: inline-flex; gap: .35rem; align-items: center; margin: .35rem .35rem 0 0; padding: .3rem; border-radius: .35rem; background: #e8eef8; }
   .certificate-markers { position: absolute; inset: 0; }
@@ -399,6 +451,106 @@
     ['verification_url', 'Verification URL'],
   ];
   const readJSON = (raw) => { try { return JSON.parse(raw || '{}'); } catch { return {}; } };
+  let onlyOfficeScriptPromise = null;
+  const loadOnlyOfficeApi = (scriptUrl) => {
+    if (window.DocsAPI?.DocEditor) return Promise.resolve();
+    if (onlyOfficeScriptPromise) return onlyOfficeScriptPromise;
+    onlyOfficeScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = scriptUrl;
+      script.onload = resolve;
+      script.onerror = () => {
+        onlyOfficeScriptPromise = null;
+        reject(new Error('Could not load the ONLYOFFICE editor service.'));
+      };
+      document.head.append(script);
+    });
+    return onlyOfficeScriptPromise;
+  };
+  document.querySelectorAll('[data-onlyoffice-editor]').forEach((panel) => {
+    const openButton = panel.querySelector('[data-onlyoffice-open]');
+    const closeButton = panel.querySelector('[data-onlyoffice-close]');
+    const workspace = panel.querySelector('[data-onlyoffice-workspace]');
+    const status = panel.querySelector('[data-onlyoffice-status]');
+    const editorElement = panel.querySelector('[data-onlyoffice-document]');
+    let editor = null;
+    let initialRevision = '';
+    let syncing = false;
+    let changedDuringSession = false;
+    const syncSavedDocument = async () => {
+      if (syncing) return;
+      syncing = true;
+      closeButton.disabled = true;
+      status.textContent = 'Waiting for Word changes to sync…';
+      const deadline = Date.now() + 60000;
+      let syncError = '';
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          const response = await fetch(panel.dataset.statusUrl);
+          if (!response.ok) throw new Error('Could not check the saved Word document.');
+          const result = await response.json();
+          if (result.revision && result.revision !== initialRevision) {
+            status.textContent = 'Word changes saved. Reloading the updated preview…';
+            window.location.reload();
+            return;
+          }
+        } catch (error) {
+          syncError = error.message;
+          break;
+        }
+      }
+      status.textContent = syncError
+        || 'No save was detected yet. Reopen the editor and make sure the document is saved.';
+      closeButton.disabled = false;
+      openButton.disabled = false;
+      syncing = false;
+    };
+    const closeEditor = () => {
+      if (editor) {
+        editor.destroyEditor();
+        editor = null;
+      }
+      if (!changedDuringSession) {
+        status.textContent = 'No Word changes were made.';
+        openButton.disabled = false;
+        return;
+      }
+      syncSavedDocument();
+    };
+    openButton?.addEventListener('click', async () => {
+      if (editor) return;
+      openButton.disabled = true;
+      status.textContent = 'Opening the Word editor…';
+      workspace.hidden = false;
+      try {
+        const response = await fetch(panel.dataset.configUrl);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || 'Could not open this Word document.');
+        await loadOnlyOfficeApi(result.script_url);
+        initialRevision = result.revision;
+        changedDuringSession = false;
+        editor = new window.DocsAPI.DocEditor(editorElement.id, {
+          ...result.config,
+          events: {
+            onDocumentStateChange: ({ data }) => {
+              if (data) changedDuringSession = true;
+              status.textContent = data
+                ? 'Unsaved Word changes. Save, then close the editor to update the template.'
+                : 'No unsaved Word changes.';
+            },
+            onRequestClose: closeEditor,
+          },
+        });
+        status.textContent = 'Edit the certificate, save it in Word, then close the editor to sync the preview.';
+        closeButton.disabled = false;
+      } catch (error) {
+        status.textContent = error.message;
+        openButton.disabled = false;
+      }
+    });
+    closeButton?.addEventListener('click', closeEditor);
+  });
   const dispatchScope = document.querySelector('[data-dispatch-scope]');
   if (dispatchScope) {
     const domainWrap = document.querySelector('[data-dispatch-domain-wrap]');
@@ -489,15 +641,40 @@
     const typeSelect = form.querySelector('[data-certificate-type]');
     const roleSelect = form.querySelector('[data-recipient-role]');
     const stage = form.querySelector('[data-stage]');
+    const fullscreenButton = form.querySelector('[data-preview-fullscreen]');
     const art = form.querySelector('[data-art]');
     const markers = form.querySelector('[data-markers]');
     const positionsInput = form.querySelector('[data-positions]');
+    fullscreenButton?.addEventListener('click', async () => {
+      try {
+        if (document.fullscreenElement === stage) {
+          await document.exitFullscreen();
+        } else if (stage.requestFullscreen) {
+          await stage.requestFullscreen();
+        } else {
+          fullscreenButton.textContent = 'Full-screen preview is not supported in this browser.';
+        }
+      } catch (error) {
+        fullscreenButton.textContent = `Full-screen preview failed: ${error.message}`;
+      }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      if (fullscreenButton && document.fullscreenElement !== stage) {
+        fullscreenButton.textContent = 'Full screen preview';
+        fullscreenButton.setAttribute('aria-pressed', 'false');
+      } else if (fullscreenButton) {
+        fullscreenButton.textContent = 'Press Esc to exit full screen';
+        fullscreenButton.setAttribute('aria-pressed', 'true');
+      }
+    });
     const initial = readJSON(positionsInput.value);
     const positions = { ...initial };
     positions.custom_texts = Array.isArray(initial.custom_texts) ? initial.custom_texts : [];
     positions.cover_zones = Array.isArray(initial.cover_zones) ? initial.cover_zones : [];
     positions.docx_field_mappings = initial.docx_field_mappings || {};
     positions.docx_field_styles = initial.docx_field_styles || {};
+    positions.docx_text_mappings = Array.isArray(initial.docx_text_mappings)
+      ? initial.docx_text_mappings : [];
     const typeOption = () => typeSelect?.tagName === 'SELECT'
       ? typeSelect.selectedOptions[0]
       : typeSelect;
@@ -522,7 +699,9 @@
       fieldStyleControls.font.value = point.font || 'Helvetica';
       fieldStyleControls.size.value = point.size || 12;
       fieldStyleControls.color.value = point.color || '#20242c';
-      fieldStyleControls.bold.checked = Boolean(point.bold);
+      fieldStyleControls.bold.checked = point.bold === undefined
+        ? field === 'recipient_name'
+        : Boolean(point.bold);
       fieldStyleControls.italic.checked = Boolean(point.italic);
       fieldStyleControls.align.value = point.align || 'center';
     };
@@ -658,9 +837,93 @@
     });
 
     const docxInput = form.querySelector('[data-docx-file]');
+    const backgroundPicker = form.querySelector('[data-background-picker]');
+    const separateBackgroundToggle = form.querySelector('[data-separate-background-toggle]');
+    const useSeparateBackground = form.querySelector('[data-use-separate-background]');
+    const updateBackgroundPicker = () => {
+      if (!form.hasAttribute('data-create-editor')) return;
+      const hasWordFile = Boolean(docxInput?.files[0]);
+      if (separateBackgroundToggle) {
+        separateBackgroundToggle.hidden = !hasWordFile;
+      }
+      if (!hasWordFile && useSeparateBackground) {
+        useSeparateBackground.checked = false;
+      }
+      if (backgroundPicker) {
+        backgroundPicker.hidden = hasWordFile && !useSeparateBackground?.checked;
+      }
+    };
+    docxInput?.addEventListener('change', () => {
+      if (docxInput.files[0] && form.querySelector('[data-background-file]')?.files[0] && useSeparateBackground) {
+        useSeparateBackground.checked = true;
+      }
+      updateBackgroundPicker();
+    });
+    useSeparateBackground?.addEventListener('change', updateBackgroundPicker);
+    updateBackgroundPicker();
     const docxPreview = form.querySelector('[data-docx-preview]');
+    const docxMapping = form.querySelector('[data-docx-mapping]');
+    const docxSelectedField = form.querySelector('[data-docx-selected-field]');
+    const docxSelectionStatus = form.querySelector('[data-docx-selection-status]');
+    let selectedDocxText = null;
+    let docxPreviewUrl = null;
+    document.addEventListener('selectionchange', () => {
+      if (!docxPreview || docxPreview.hidden) return;
+      const selection = window.getSelection();
+      const selectedText = selection?.toString() || '';
+      const anchorElement = selection?.anchorNode instanceof Element
+        ? selection.anchorNode
+        : selection?.anchorNode?.parentElement;
+      const focusElement = selection?.focusNode instanceof Element
+        ? selection.focusNode
+        : selection?.focusNode?.parentElement;
+      const paragraph = anchorElement?.closest('[data-docx-paragraph-index]');
+      const focusParagraph = focusElement?.closest('[data-docx-paragraph-index]');
+      if (
+        selectedText.trim()
+        && paragraph
+        && paragraph === focusParagraph
+        && docxPreview.contains(paragraph)
+      ) {
+        selectedDocxText = {
+          paragraph_index: Number(paragraph.dataset.docxParagraphIndex),
+          text: selectedText.trim(),
+        };
+        docxSelectionStatus.textContent = `Selected: “${selectedDocxText.text}”`;
+      }
+    });
+    form.querySelector('[data-docx-map-selected]')?.addEventListener('click', () => {
+      if (!selectedDocxText) {
+        docxSelectionStatus.textContent = 'Select words from a Word paragraph first.';
+        return;
+      }
+      if (selectedDocxText.text.length > 200) {
+        docxSelectionStatus.textContent = 'Select no more than 200 characters at a time.';
+        return;
+      }
+      const mapping = {
+        ...selectedDocxText,
+        field: docxSelectedField.value,
+      };
+      const existing = positions.docx_text_mappings.findIndex((item) => (
+        item.paragraph_index === mapping.paragraph_index
+        && item.text === mapping.text
+      ));
+      if (existing >= 0) positions.docx_text_mappings[existing] = mapping;
+      else if (positions.docx_text_mappings.length >= 100) {
+        docxSelectionStatus.textContent = 'A Word template can have at most 100 selected-text mappings.';
+        return;
+      } else positions.docx_text_mappings.push(mapping);
+      positionsInput.value = JSON.stringify(positions);
+      docxSelectionStatus.textContent = `Mapped “${mapping.text}” to ${fieldLabels[mapping.field] || mapping.field}.`;
+    });
     docxInput?.addEventListener('change', async () => {
       docxPreview.replaceChildren();
+      docxMapping.hidden = true;
+      selectedDocxText = null;
+      docxSelectionStatus.textContent = 'Select text from the Word paragraph preview below.';
+      if (docxPreviewUrl) URL.revokeObjectURL(docxPreviewUrl);
+      docxPreviewUrl = null;
       const file = docxInput.files[0];
       if (!file) return;
       const loading = document.createElement('p');
@@ -680,10 +943,33 @@
         const heading = document.createElement('strong');
         heading.textContent = `${file.name} · ${result.paragraphs.length} text paragraphs`;
         docxPreview.append(heading);
+        const pdfBody = new FormData();
+        pdfBody.append('template_docx', file);
+        pdfBody.append('csrf_token', form.querySelector('[name="csrf_token"]').value);
+        const pdfResponse = await fetch(form.dataset.docxPreviewPdfUrl, {
+          method: 'POST',
+          body: pdfBody,
+        });
+        if (!pdfResponse.ok) {
+          const error = await pdfResponse.json().catch(() => ({}));
+          throw new Error(error.message || 'Could not render a PDF preview of this Word certificate.');
+        }
+        docxPreviewUrl = URL.createObjectURL(await pdfResponse.blob());
+        const pdfFrame = document.createElement('iframe');
+        pdfFrame.className = 'certificate-docx-pdf-preview mb-3';
+        pdfFrame.title = 'Rendered Word certificate PDF preview';
+        pdfFrame.src = docxPreviewUrl;
+        docxPreview.append(pdfFrame);
+        const selectionHelp = document.createElement('p');
+        selectionHelp.className = 'small muted mb-2';
+        selectionHelp.textContent = 'Select existing words in the text preview below, then choose the recipient field to replace them.';
+        docxPreview.append(selectionHelp);
         result.paragraphs.forEach((paragraph) => {
           const line = document.createElement('div');
           line.className = 'certificate-docx-line';
+          line.dataset.docxParagraphIndex = String(paragraph.index);
           const text = document.createElement('div');
+          text.className = 'certificate-docx-selectable';
           text.textContent = paragraph.text;
           line.append(text);
           paragraph.tokens.forEach((token) => {
@@ -768,6 +1054,7 @@
           notice.textContent = 'No merge placeholders were detected. Add placeholders such as <Name>, <Role>, <Domain>, <Event>, <Day>, <Date>, and <Venue> to the DOCX before generating certificates.';
           docxPreview.append(notice);
         }
+        docxMapping.hidden = false;
       } catch (error) {
         docxPreview.replaceChildren();
         const message = document.createElement('p');
@@ -776,6 +1063,16 @@
         docxPreview.append(message);
       }
     });
+    if (form.hasAttribute('data-create-editor')) {
+      form.addEventListener('submit', (event) => {
+        const backgroundFile = form.querySelector('[data-background-file]')?.files[0];
+        const wordFile = docxInput?.files[0];
+        if (!backgroundFile && !wordFile) {
+          event.preventDefault();
+          window.alert('Upload a Word DOCX template or a PDF/image background.');
+        }
+      });
+    }
 
     const templateFile = form.querySelector('[data-background-file]');
     if (templateFile) templateFile.addEventListener('change', () => {

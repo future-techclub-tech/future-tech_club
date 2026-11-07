@@ -1,5 +1,6 @@
 import csv
 import copy
+import hashlib
 import io
 import json
 import math
@@ -10,7 +11,10 @@ import smtplib
 import ssl
 import stat
 import sqlite3
+import shutil
+import subprocess
 import tempfile
+import time
 import uuid
 import urllib.error
 import urllib.request
@@ -20,8 +24,11 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
 from html import escape
+from pathlib import Path
+from urllib.parse import urlsplit
 from flask import Blueprint, render_template, redirect, url_for, request, flash, abort, current_app, session, send_from_directory, send_file, Response, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from sqlalchemy import and_, literal, or_, select, union_all
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.schema import CreateTable
@@ -36,7 +43,8 @@ from PIL import Image, ImageDraw, ImageFont
 from openpyxl import load_workbook
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import HTTPException
-from .extensions import db
+from .extensions import csrf, db
+from .onlyoffice import InvalidOnlyOfficeToken, decode_onlyoffice_token, encode_onlyoffice_token
 from .models import User, Team, TeamMember, Domain, Evaluation, AdminEvaluation, MentorEvaluation, TeamTask, WorkTask, WorkTaskAssignment, TaskDeadlineReminder, TeamChatMessage, AdminChatMessage, Nomination, ProjectVideo, TeamSubmission, Winner, DomainResultPublication, UserNotification, CertificateType, CertificateTemplate, Certificate, Announcement, AuditLog, JudgeAssignment, MentorTeamAssignment, CoordinatorDomainAssignment, CoordinatorTeamAssignment, LoginAttempt, SiteSetting, Attendance
 from .rich_text import sanitize_rich_text
 
@@ -1137,6 +1145,35 @@ def editable_certificate_docx(type_name):
     return output
 
 
+def serialize_opc_xml_with_default_namespace(element, namespace):
+    serialized = ET.tostring(element, encoding="utf-8", xml_declaration=True)
+    root_start = serialized.find(b"<", serialized.find(b"?>") + 2)
+    root_end = serialized.find(b">", root_start)
+    root_tag = serialized[root_start:root_end]
+    prefix_match = re.match(rb"<([A-Za-z_][\w.-]*):", root_tag)
+    namespace_bytes = namespace.encode("utf-8")
+    if prefix_match is None:
+        if b'xmlns="' + namespace_bytes + b'"' in root_tag:
+            return serialized
+        raise ValueError("The Open Packaging Convention XML namespace is missing.")
+
+    prefix = prefix_match.group(1)
+    declaration = re.search(
+        rb'\s+xmlns:' + re.escape(prefix) + rb'="([^"]+)"',
+        root_tag,
+    )
+    if declaration is None or declaration.group(1) != namespace_bytes:
+        raise ValueError("The Open Packaging Convention XML namespace is invalid.")
+
+    serialized = serialized.replace(
+        declaration.group(0),
+        b' xmlns="' + namespace_bytes + b'"',
+        1,
+    )
+    serialized = serialized.replace(b"<" + prefix + b":", b"<")
+    return serialized.replace(b"</" + prefix + b":", b"</")
+
+
 def merged_certificate_docx(
     template_path, values, verification_url, template_positions=None
 ):
@@ -1192,6 +1229,7 @@ def merged_certificate_docx(
     merge_values = {**values, "verification_url": verification_url}
     template_positions = template_positions or {}
     field_mappings = template_positions.get("docx_field_mappings", {})
+    text_mappings = template_positions.get("docx_text_mappings", [])
     field_styles = template_positions.get("docx_field_styles", {})
     token_pattern = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}|<([a-zA-Z0-9_]+)>")
     qr_image_needed = False
@@ -1229,35 +1267,65 @@ def merged_certificate_docx(
         for parent in root.iter()
         for child in list(parent)
     }
-    for paragraph in root.findall(".//w:p", ns):
+    paragraphs = root.findall(".//w:p", ns)
+    for paragraph_index, paragraph in enumerate(paragraphs):
         text_nodes = paragraph.findall(".//w:t", ns)
         if not text_nodes:
             continue
         paragraph_text = "".join(node.text or "" for node in text_nodes)
-        if not token_pattern.search(paragraph_text):
-            continue
-
-        segments = []
-        cursor = 0
+        replacements = []
         for match in token_pattern.finditer(paragraph_text):
-            if match.start() > cursor:
-                segments.append((paragraph_text[cursor:match.start()], None))
             token = (match.group(1) or match.group(2)).casefold()
             field = field_mappings.get(token, aliases.get(token, token))
+            replacements.append((match.start(), match.end(), token, field, False))
+        for mapping in text_mappings:
+            if mapping["paragraph_index"] != paragraph_index:
+                continue
+            for match in re.finditer(re.escape(mapping["text"]), paragraph_text):
+                replacements.append((
+                    match.start(),
+                    match.end(),
+                    mapping["field"],
+                    mapping["field"],
+                    True,
+                ))
+        if not replacements:
+            continue
+
+        replacements.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+        segments = []
+        cursor = 0
+        for start, end, token, field, is_text_mapping in replacements:
+            if start < cursor:
+                continue
+            if start > cursor:
+                segments.append((paragraph_text[cursor:start], None))
             if field == "qr":
                 qr_image_needed = True
                 if qr_target_paragraph is None:
                     qr_target_paragraph = paragraph
-            elif field in {"certificate_id", "certificate_number"}:
+            elif (
+                field in {"certificate_id", "certificate_number"}
+                and not is_text_mapping
+            ):
                 certificate_number_paragraphs.add(paragraph)
-            else:
-                replacement = str(merge_values.get(field, match.group(0)))
+            elif field in {"certificate_id", "certificate_number"}:
+                replacement = str(merge_values.get(field, ""))
                 if replacement:
                     segments.append((
                         replacement,
                         field_styles.get(token, field_styles.get(field)),
                     ))
-            cursor = match.end()
+            else:
+                replacement = str(merge_values.get(
+                    field, paragraph_text[start:end]
+                ))
+                if replacement:
+                    segments.append((
+                        replacement,
+                        field_styles.get(token, field_styles.get(field)),
+                    ))
+            cursor = end
         if cursor < len(paragraph_text):
             segments.append((paragraph_text[cursor:], None))
 
@@ -1446,8 +1514,8 @@ def merged_certificate_docx(
             "Target": f"media/{image_name}",
         },
     )
-    parts[relationships_name] = ET.tostring(
-        relationships, encoding="utf-8", xml_declaration=True
+    parts[relationships_name] = serialize_opc_xml_with_default_namespace(
+        relationships, ns["rel"]
     )
     content_types_name = "[Content_Types].xml"
     try:
@@ -1466,8 +1534,8 @@ def merged_certificate_docx(
                 "ContentType": "image/png",
             },
         )
-    parts[content_types_name] = ET.tostring(
-        content_types, encoding="utf-8", xml_declaration=True
+    parts[content_types_name] = serialize_opc_xml_with_default_namespace(
+        content_types, ns["ct"]
     )
 
     drawing_xml = (
@@ -1553,6 +1621,62 @@ def merged_certificate_docx(
     return output
 
 
+def convert_certificate_docx_to_pdf(document_data):
+    converter = shutil.which("libreoffice") or shutil.which("soffice")
+    if not converter:
+        raise RuntimeError(
+            "Word-to-PDF conversion is unavailable. The server requires LibreOffice."
+        )
+    with tempfile.TemporaryDirectory(prefix="certificate-docx-") as temp_dir:
+        input_path = os.path.join(temp_dir, "certificate.docx")
+        with open(input_path, "xb") as source:
+            source.write(document_data)
+        output_dir = os.path.join(temp_dir, "output")
+        profile_dir = os.path.join(temp_dir, "profile")
+        os.makedirs(output_dir)
+        profile_url = Path(profile_dir).as_uri()
+        try:
+            result = subprocess.run(
+                [
+                    converter,
+                    f"-env:UserInstallation={profile_url}",
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    output_dir,
+                    input_path,
+                ],
+                check=False,
+                capture_output=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                "Word-to-PDF conversion exceeded the 60-second limit."
+            ) from error
+        pdf_path = os.path.join(output_dir, "certificate.pdf")
+        if result.returncode or not os.path.isfile(pdf_path):
+            detail = (result.stderr or result.stdout).decode(
+                "utf-8", errors="replace"
+            ).strip()
+            raise RuntimeError(
+                "LibreOffice could not render the Word certificate."
+                + (f" {detail[:300]}" if detail else "")
+            )
+        with open(pdf_path, "rb") as rendered:
+            pdf_data = rendered.read()
+    try:
+        with pymupdf.open(stream=pdf_data, filetype="pdf") as document:
+            if len(document) != 1:
+                raise ValueError(
+                    "A certificate Word template must render to exactly one PDF page."
+                )
+    except (pymupdf.FileDataError, RuntimeError) as error:
+        raise ValueError("The Word certificate did not produce a valid PDF.") from error
+    return pdf_data
+
+
 CERTIFICATE_CSV_COLUMN_ALIASES = {
     "username_column": ("username", "accountusername", "studentid", "login"),
     "recipient_name_column": ("name", "recipientname", "fullname"),
@@ -1575,6 +1699,9 @@ def parse_certificate_positions(raw):
         abort(400, description="Certificate field positions are invalid.")
     if not isinstance(supplied, dict):
         abort(400, description="Certificate field positions must be an object.")
+    docx_pdf_primary = supplied.get("docx_pdf_primary", False)
+    if not isinstance(docx_pdf_primary, bool):
+        abort(400, description="The Word PDF rendering option is invalid.")
     positions = {}
     for field, default in CERTIFICATE_TEMPLATE_POSITIONS.items():
         legacy_field = "team_code" if field == "team_id" else field
@@ -1649,6 +1776,38 @@ def parse_certificate_positions(raw):
             abort(400, description="A Word field mapping contains an unsupported token or field.")
         normalized_mappings[normalized_token] = field
     positions["docx_field_mappings"] = normalized_mappings
+    raw_text_mappings = supplied.get("docx_text_mappings", [])
+    if not isinstance(raw_text_mappings, list) or len(raw_text_mappings) > 100:
+        abort(400, description="Word text mappings must contain no more than 100 entries.")
+    normalized_text_mappings = []
+    seen_text_mappings = set()
+    for mapping in raw_text_mappings:
+        if not isinstance(mapping, dict):
+            abort(400, description="A Word text mapping is invalid.")
+        paragraph_index = mapping.get("paragraph_index")
+        text = mapping.get("text")
+        field = mapping.get("field")
+        if (
+            not isinstance(paragraph_index, int)
+            or isinstance(paragraph_index, bool)
+            or not 0 <= paragraph_index < 10000
+            or not isinstance(text, str)
+            or not text.strip()
+            or len(text) > 200
+            or not isinstance(field, str)
+            or field not in allowed_docx_fields
+        ):
+            abort(400, description="A Word text mapping has an unsupported selection or field.")
+        key = (paragraph_index, text)
+        if key in seen_text_mappings:
+            abort(400, description="A Word text selection can only be mapped once.")
+        seen_text_mappings.add(key)
+        normalized_text_mappings.append({
+            "paragraph_index": paragraph_index,
+            "text": text,
+            "field": field,
+        })
+    positions["docx_text_mappings"] = normalized_text_mappings
     raw_field_styles = supplied.get("docx_field_styles", {})
     if not isinstance(raw_field_styles, dict) or len(raw_field_styles) > 100:
         abort(400, description="Word field styles must be an object with no more than 100 entries.")
@@ -1776,6 +1935,7 @@ def parse_certificate_positions(raw):
             "color": color.lower(),
         })
     positions["cover_zones"] = normalized_cover_zones
+    positions["docx_pdf_primary"] = docx_pdf_primary
     return positions
 
 
@@ -1853,6 +2013,53 @@ def certificate_template_background(path, width, height):
     return ImageReader(path)
 
 
+def certificate_word_merge_data(certificate, template_values):
+    document_file = template_values.get("document_file")
+    if not document_file or os.path.basename(document_file) != document_file:
+        abort(404, description="This certificate has no saved Word template.")
+    document_path = os.path.join(
+        current_app.config["UPLOAD_FOLDER"],
+        "certificate_templates",
+        document_file,
+    )
+    if not os.path.isfile(document_path):
+        abort(503, description="The saved Word certificate template file is missing.")
+    try:
+        values = json.loads(certificate.fields_json or "{}")
+        positions = json.loads(template_values.get("positions_json", "{}") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        abort(503, description="The saved Word certificate data is invalid.")
+    if not isinstance(values, dict) or not isinstance(positions, dict):
+        abort(503, description="The saved Word certificate data is invalid.")
+    values.update({
+        "recipient_name": certificate.recipient_name,
+        "recipient_role": certificate.recipient_role,
+        "certificate_id": certificate.certificate_id,
+        "certificate_number": certificate.certificate_id,
+        "team_id": certificate.team_code,
+    })
+    return document_path, values, positions
+
+
+def render_certificate_word_pdf(certificate, template_values):
+    document_path, values, positions = certificate_word_merge_data(
+        certificate, template_values
+    )
+    verification_url = certificate_verification_url(certificate.certificate_id)
+    merged_document = merged_certificate_docx(
+        document_path,
+        values,
+        verification_url,
+        positions,
+    )
+    try:
+        return io.BytesIO(
+            convert_certificate_docx_to_pdf(merged_document.getvalue())
+        )
+    except (RuntimeError, ValueError) as error:
+        abort(503, description=str(error))
+
+
 def render_template_certificate(certificate):
     current_template = certificate.template
     has_snapshot = bool(certificate.template_snapshot_json)
@@ -1871,6 +2078,12 @@ def render_template_certificate(certificate):
         abort(503, description="Certificate template snapshot is invalid.")
     if not isinstance(template_values, dict):
         abort(503, description="Certificate template snapshot is invalid.")
+    if template_values.get("document_file"):
+        saved_positions = parse_certificate_positions(
+            template_values.get("positions_json", "")
+        )
+        if saved_positions["docx_pdf_primary"]:
+            return render_certificate_word_pdf(certificate, template_values)
     background_file = template_values.get("background_file", "")
     if os.path.basename(background_file) != background_file:
         abort(503, description="The certificate template file path is invalid.")
@@ -2389,6 +2602,23 @@ def certificate_visible_to_user(certificate, user):
             and certificate.recipient_name == user.member_record.full_name
         )
     return False
+
+
+def certificate_download_filename(certificate, extension):
+    student_id = ""
+    if certificate.user_id:
+        member = TeamMember.query.filter_by(user_id=certificate.user_id).first()
+        if member:
+            student_id = member.prn
+    if not student_id:
+        try:
+            fields = json.loads(certificate.fields_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            fields = {}
+        if isinstance(fields, dict):
+            student_id = fields.get("student_id", "")
+    filename = secure_filename(str(student_id).strip()) or certificate.certificate_id
+    return f"{filename}.{extension}"
 
 
 def certificates_for_user(user):
@@ -6034,7 +6264,9 @@ def certificate_template_docx_preview():
     }
     paragraphs = []
     seen_tokens = set()
-    for paragraph in root.findall(f".//{{{word_ns}}}p"):
+    for paragraph_index, paragraph in enumerate(
+        root.findall(f".//{{{word_ns}}}p")
+    ):
         text = "".join(
             node.text or ""
             for node in paragraph.findall(f".//{{{word_ns}}}t")
@@ -6049,13 +6281,376 @@ def certificate_template_docx_preview():
                 "field": aliases.get(token, token),
             })
             seen_tokens.add(token)
-        paragraphs.append({"text": text, "tokens": token_items})
+        paragraphs.append({
+            "index": paragraph_index,
+            "text": text,
+            "tokens": token_items,
+        })
         if len(paragraphs) >= 150:
             break
     return jsonify({
         "paragraphs": paragraphs,
         "token_count": len(seen_tokens),
     })
+
+
+@main.route("/admin/certificate-template/docx-preview-pdf", methods=["POST"])
+@roles_required("admin")
+def certificate_template_docx_preview_pdf():
+    document_data = read_certificate_template_document_upload(
+        request.files.get("template_docx")
+    )
+    if not document_data:
+        abort(400, description="Choose a Word DOCX template to preview.")
+    try:
+        pdf_data = convert_certificate_docx_to_pdf(document_data)
+    except (RuntimeError, ValueError) as error:
+        abort(503, description=str(error))
+    return send_file(
+        io.BytesIO(pdf_data),
+        mimetype="application/pdf",
+        download_name="certificate-preview.pdf",
+    )
+
+
+def onlyoffice_document_directory():
+    return os.path.join(
+        current_app.config["UPLOAD_FOLDER"], "certificate_templates"
+    )
+
+
+def onlyoffice_document_signer():
+    return URLSafeTimedSerializer(
+        current_app.secret_key,
+        salt="onlyoffice-certificate-template-document",
+    )
+
+
+def onlyoffice_url_has_origin(url, origin):
+    try:
+        candidate = urlsplit(url)
+        expected = urlsplit(origin)
+        candidate_port = candidate.port or (
+            443 if candidate.scheme == "https" else 80
+        )
+        expected_port = expected.port or (
+            443 if expected.scheme == "https" else 80
+        )
+    except (TypeError, ValueError):
+        return False
+    return (
+        candidate.scheme == expected.scheme
+        and candidate.hostname == expected.hostname
+        and candidate_port == expected_port
+    )
+
+
+class OnlyOfficeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, expected_origin):
+        super().__init__()
+        self.expected_origin = expected_origin
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not onlyoffice_url_has_origin(newurl, self.expected_origin):
+            raise urllib.error.HTTPError(
+                newurl, code, "Cross-origin document redirect rejected.", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+@main.route(
+    "/admin/certificate-templates/<int:template_id>/editor-config"
+)
+@roles_required("admin")
+def certificate_template_editor_config(template_id):
+    template = db.get_or_404(CertificateTemplate, template_id)
+    server_url = current_app.config.get("ONLYOFFICE_SERVER_URL", "").rstrip("/")
+    secret = current_app.config.get("ONLYOFFICE_JWT_SECRET", "")
+    if not server_url or not secret:
+        return jsonify({
+            "message": (
+                "The Word editor is not configured. Deploy the ONLYOFFICE service "
+                "and set its URL and shared JWT secret."
+            )
+        }), 503
+    if (
+        not template.document_file
+        or os.path.basename(template.document_file) != template.document_file
+    ):
+        abort(404, description="This certificate template has no Word document.")
+    document_path = os.path.join(
+        onlyoffice_document_directory(), template.document_file
+    )
+    if not os.path.isfile(document_path):
+        abort(404, description="The Word source file is missing.")
+    editor_key = hashlib.sha256(
+        f"{template.id}:{template.document_file}".encode("utf-8")
+    ).hexdigest()
+    signer = onlyoffice_document_signer()
+    document_token = signer.dumps({
+        "template_id": template.id,
+        "document_file": template.document_file,
+    })
+    document_path_url = url_for(
+        "main.onlyoffice_certificate_template_document",
+        template_id=template.id,
+        token=document_token,
+    )
+    public_base_url = (
+        current_app.config.get("CERTIFICATE_PUBLIC_BASE_URL")
+        or request.url_root.rstrip("/")
+    )
+    callback_path = url_for(
+        "main.onlyoffice_certificate_template_callback",
+        template_id=template.id,
+        key=editor_key,
+    )
+    editor_config = {
+        "documentType": "word",
+        "document": {
+            "fileType": "docx",
+            "key": editor_key,
+            "title": secure_filename(template.certificate_type.name) + ".docx",
+            "url": public_base_url + document_path_url,
+            "permissions": {
+                "edit": True,
+                "download": True,
+                "print": True,
+            },
+        },
+        "editorConfig": {
+            "mode": "edit",
+            "callbackUrl": public_base_url + callback_path,
+            "user": {
+                "id": str(current_user.id),
+                "name": current_user.display_name or current_user.username,
+            },
+            "customization": {
+                "autosave": True,
+                "forcesave": True,
+            },
+        },
+    }
+    token_payload = {
+        **editor_config,
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 3600,
+    }
+    editor_config["token"] = encode_onlyoffice_token(token_payload, secret)
+    return jsonify({
+        "server_url": server_url,
+        "script_url": server_url + "/web-apps/apps/api/documents/api.js",
+        "revision": template.document_file,
+        "config": editor_config,
+    })
+
+
+@main.route(
+    "/admin/certificate-templates/<int:template_id>/editor-status"
+)
+@roles_required("admin")
+def certificate_template_editor_status(template_id):
+    template = db.get_or_404(CertificateTemplate, template_id)
+    return jsonify({"revision": template.document_file})
+
+
+@main.route(
+    "/onlyoffice/certificate-templates/<int:template_id>/document"
+)
+def onlyoffice_certificate_template_document(template_id):
+    token = request.args.get("token", "")
+    try:
+        document_access = onlyoffice_document_signer().loads(
+            token, max_age=8 * 60 * 60
+        )
+    except BadSignature:
+        abort(403, description="The Word editor document link has expired.")
+    template = db.get_or_404(CertificateTemplate, template_id)
+    document_file = document_access.get("document_file")
+    if (
+        document_access.get("template_id") != template.id
+        or document_file != template.document_file
+        or not document_file
+        or os.path.basename(document_file) != document_file
+    ):
+        abort(403, description="The Word editor document link is no longer valid.")
+    return send_from_directory(
+        onlyoffice_document_directory(),
+        document_file,
+        as_attachment=False,
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+    )
+
+
+@main.route(
+    "/onlyoffice/certificate-templates/<int:template_id>/callback",
+    methods=["POST"],
+)
+@csrf.exempt
+def onlyoffice_certificate_template_callback(template_id):
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": 1}), 400
+    secret = current_app.config.get("ONLYOFFICE_JWT_SECRET", "")
+    if not secret:
+        current_app.logger.error("ONLYOFFICE callback received without a JWT secret.")
+        return jsonify({"error": 1}), 503
+    header_token = request.headers.get("Authorization", "")
+    if header_token.lower().startswith("bearer "):
+        header_token = header_token[7:].strip()
+    tokens = [
+        candidate
+        for candidate in (header_token, body.get("token", ""))
+        if isinstance(candidate, str) and candidate
+    ]
+    valid_callback = False
+    for token in dict.fromkeys(tokens):
+        try:
+            claims = decode_onlyoffice_token(token, secret)
+        except (InvalidOnlyOfficeToken, TypeError, ValueError):
+            continue
+        signed_callback = claims.get("payload", claims)
+        if (
+            isinstance(signed_callback, dict)
+            and str(signed_callback.get("key", "")) == str(body.get("key", ""))
+            and str(signed_callback.get("status", ""))
+            == str(body.get("status", ""))
+        ):
+            valid_callback = True
+            break
+    if not valid_callback or request.args.get("key") != str(body.get("key", "")):
+        return jsonify({"error": 1}), 403
+    try:
+        status = int(body.get("status", 0))
+    except (TypeError, ValueError):
+        return jsonify({"error": 1}), 400
+    if status not in {2, 6}:
+        return jsonify({"error": 0})
+
+    template = db.get_or_404(CertificateTemplate, template_id)
+    document_url = body.get("url")
+    server_url = current_app.config.get("ONLYOFFICE_SERVER_URL", "").rstrip("/")
+    if not onlyoffice_url_has_origin(document_url or "", server_url):
+        current_app.logger.error(
+            "Rejected ONLYOFFICE document callback from an unexpected host."
+        )
+        return jsonify({"error": 1}), 400
+    try:
+        opener = urllib.request.build_opener(
+            OnlyOfficeRedirectHandler(server_url)
+        )
+        with opener.open(document_url, timeout=60) as response:
+            if not onlyoffice_url_has_origin(response.geturl(), server_url):
+                raise ValueError("The document server redirected the saved document.")
+            document_data = response.read(MAX_CERTIFICATE_DOCX_SIZE + 1)
+    except (urllib.error.URLError, TimeoutError, ValueError) as error:
+        current_app.logger.error("Could not retrieve saved ONLYOFFICE document: %s", error)
+        return jsonify({"error": 1}), 502
+    if not document_data or len(document_data) > MAX_CERTIFICATE_DOCX_SIZE:
+        current_app.logger.error("ONLYOFFICE returned an empty or oversized DOCX.")
+        return jsonify({"error": 1}), 400
+    try:
+        with zipfile.ZipFile(io.BytesIO(document_data)) as archive:
+            info = archive.getinfo("word/document.xml")
+            archive.getinfo("[Content_Types].xml")
+            entries = archive.infolist()
+            if (
+                len(entries) > 2000
+                or sum(entry.file_size for entry in entries)
+                > MAX_CERTIFICATE_DOCX_SIZE * 4
+                or info.file_size > MAX_CERTIFICATE_DOCX_SIZE
+            ):
+                raise ValueError("The saved DOCX contains oversized content.")
+            ET.fromstring(archive.read(info))
+    except (zipfile.BadZipFile, KeyError, ET.ParseError, OSError, ValueError) as error:
+        current_app.logger.error("ONLYOFFICE returned an invalid DOCX: %s", error)
+        return jsonify({"error": 1}), 400
+
+    positions = json.loads(template.positions_json or "{}")
+    converted_background = None
+    if positions.get("docx_pdf_primary"):
+        try:
+            converted_background = convert_certificate_docx_to_pdf(document_data)
+        except (RuntimeError, ValueError) as error:
+            current_app.logger.error(
+                "Could not render saved ONLYOFFICE document: %s", error
+            )
+            return jsonify({"error": 1}), 422
+
+    directory = onlyoffice_document_directory()
+    os.makedirs(directory, exist_ok=True)
+    issued_certificates = Certificate.query.filter_by(
+        template_id=template.id
+    ).all()
+    for certificate in issued_certificates:
+        if not certificate.template_snapshot_json:
+            certificate.template_snapshot_json = json.dumps(
+                certificate_template_snapshot(template)
+            )
+    old_document_file = template.document_file
+    old_background_file = template.background_file
+    new_document_file = uuid.uuid4().hex + ".docx"
+    new_document_path = os.path.join(directory, new_document_file)
+    new_background_file = None
+    created_paths = [new_document_path]
+    try:
+        with open(new_document_path, "xb") as saved_document:
+            saved_document.write(document_data)
+        if converted_background is not None:
+            new_background_file = uuid.uuid4().hex + ".pdf"
+            new_background_path = os.path.join(directory, new_background_file)
+            created_paths.append(new_background_path)
+            with open(new_background_path, "xb") as saved_background:
+                saved_background.write(converted_background)
+            template.page_width, template.page_height = certificate_template_dimensions(
+                ".pdf", converted_background
+            )
+            template.background_file = new_background_file
+    except OSError:
+        for path in created_paths:
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+            except OSError:
+                current_app.logger.warning(
+                    "Could not remove incomplete ONLYOFFICE file %s.",
+                    path,
+                    exc_info=True,
+                )
+        current_app.logger.exception("Could not write saved ONLYOFFICE files.")
+        return jsonify({"error": 1}), 500
+    template.document_file = new_document_file
+    template.approved = False
+    try:
+        db.session.commit()
+    except SQLAlchemyError as error:
+        db.session.rollback()
+        for path in created_paths:
+            if os.path.isfile(path):
+                os.remove(path)
+        current_app.logger.exception("Could not save edited certificate template.")
+        return jsonify({"error": 1}), 500
+    current_app.logger.info(
+        "Certificate template %s was edited in ONLYOFFICE.",
+        template.id,
+    )
+    if not issued_certificates:
+        for old_file in (old_document_file, old_background_file if new_background_file else None):
+            if old_file and os.path.basename(old_file) == old_file:
+                old_path = os.path.join(directory, old_file)
+                if os.path.isfile(old_path):
+                    try:
+                        os.remove(old_path)
+                    except OSError:
+                        current_app.logger.warning(
+                            "Could not remove replaced certificate template file %s.",
+                            old_file,
+                            exc_info=True,
+                        )
+    return jsonify({"error": 0})
 
 
 @main.route("/admin/certificates", methods=["GET","POST"])
@@ -6207,18 +6802,35 @@ def certificates():
                 abort(400, description="Select one of the five supported certificate types.")
             if recipient_role not in CERTIFICATE_TEMPLATE_ROLES[type_name]:
                 abort(400, description="Select a role supported by this certificate type.")
-            extension, file_data = read_certificate_template_upload(
-                request.files.get("template_file")
-            )
             document_data = read_certificate_template_document_upload(
                 request.files.get("template_docx")
             )
+            background_upload = request.files.get("template_file")
+            if background_upload and background_upload.filename:
+                extension, file_data = read_certificate_template_upload(
+                    background_upload
+                )
+            elif document_data:
+                try:
+                    file_data = convert_certificate_docx_to_pdf(document_data)
+                except (RuntimeError, ValueError) as error:
+                    abort(503, description=str(error))
+                extension = ".pdf"
+            else:
+                abort(
+                    400,
+                    description="Upload a PDF/image background or a Word DOCX template.",
+                )
             page_width, page_height = certificate_template_dimensions(
                 extension, file_data
             )
 
             positions = parse_certificate_positions(
                 request.form.get("positions_json", "")
+            )
+            positions["docx_pdf_primary"] = bool(
+                document_data
+                and not (background_upload and background_upload.filename)
             )
             certificate_type = CertificateType.query.filter_by(name=type_name).first()
             if certificate_type and certificate_type.template:
@@ -6775,6 +7387,10 @@ def certificates():
             name: sorted(roles)
             for name, roles in CERTIFICATE_TEMPLATE_ROLES.items()
         },
+        onlyoffice_configured=bool(
+            current_app.config.get("ONLYOFFICE_SERVER_URL")
+            and current_app.config.get("ONLYOFFICE_JWT_SECRET")
+        ),
         user_labels={
             user.id: user.username
             for user in User.query.filter(User.id.in_(user_ids)).all()
@@ -6956,8 +7572,8 @@ def edit_certificate_template(template_id):
     template.event_date = event_date
     template.event_venue = event_venue
     template.recipient_role = recipient_role
-    template.positions_json = json.dumps(
-        parse_certificate_positions(request.form.get("positions_json", ""))
+    positions = parse_certificate_positions(
+        request.form.get("positions_json", "")
     )
     old_filename = None
     old_document_filename = None
@@ -6978,9 +7594,20 @@ def edit_certificate_template(template_id):
         template.background_file = filename
         template.page_width = page_width
         template.page_height = page_height
+        positions["docx_pdf_primary"] = False
     template_document = request.files.get("template_docx")
     if template_document and template_document.filename:
         document_data = read_certificate_template_document_upload(template_document)
+        converted_background = None
+        if positions["docx_pdf_primary"] and not (
+            template_file and template_file.filename
+        ):
+            try:
+                converted_background = convert_certificate_docx_to_pdf(
+                    document_data
+                )
+            except (RuntimeError, ValueError) as error:
+                abort(503, description=str(error))
         template_directory = os.path.join(
             current_app.config["UPLOAD_FOLDER"], "certificate_templates"
         )
@@ -6992,6 +7619,20 @@ def edit_certificate_template(template_id):
         ) as stored_document:
             stored_document.write(document_data)
         template.document_file = document_filename
+        if converted_background is not None:
+            page_width, page_height = certificate_template_dimensions(
+                ".pdf", converted_background
+            )
+            old_filename = template.background_file
+            filename = uuid.uuid4().hex + ".pdf"
+            with open(
+                os.path.join(template_directory, filename), "xb"
+            ) as stored_template:
+                stored_template.write(converted_background)
+            template.background_file = filename
+            template.page_width = page_width
+            template.page_height = page_height
+    template.positions_json = json.dumps(positions)
     template.approved = False
     log("Edited certificate template", template.certificate_type.name)
     db.session.commit()
@@ -7205,14 +7846,14 @@ def download_certificate(certificate_id):
             cert.file_path,
             mimetype="application/pdf",
             as_attachment=True,
-            download_name=f"{cert.certificate_id}.pdf",
+            download_name=certificate_download_filename(cert, "pdf"),
         )
     if cert.template_id or cert.template_snapshot_json:
         return send_file(
             render_template_certificate(cert),
             mimetype="application/pdf",
             as_attachment=True,
-            download_name=f"{cert.certificate_id}.pdf",
+            download_name=certificate_download_filename(cert, "pdf"),
         )
     abort(503, description="This certificate does not have an approved template.")
 
@@ -7232,43 +7873,14 @@ def download_certificate_word(certificate_id):
             abort(503, description="The saved certificate template snapshot is invalid.")
         if not isinstance(snapshot, dict):
             abort(503, description="The saved certificate template snapshot is invalid.")
-        document_file = snapshot.get("document_file")
+    elif certificate.template:
+        snapshot = certificate_template_snapshot(certificate.template)
     else:
-        document_file = (
-            certificate.template.document_file if certificate.template else None
-        )
-    if not document_file or os.path.basename(document_file) != document_file:
         abort(404, description="This certificate has no saved Word template.")
-    document_path = os.path.join(
-        current_app.config["UPLOAD_FOLDER"],
-        "certificate_templates",
-        document_file,
+    document_path, values, saved_positions = certificate_word_merge_data(
+        certificate,
+        snapshot,
     )
-    if not os.path.isfile(document_path):
-        abort(503, description="The saved Word certificate template file is missing.")
-    try:
-        values = json.loads(certificate.fields_json or "{}")
-    except (TypeError, json.JSONDecodeError):
-        abort(503, description="The saved certificate recipient data is invalid.")
-    if not isinstance(values, dict):
-        abort(503, description="The saved certificate recipient data is invalid.")
-    values.update({
-        "recipient_name": certificate.recipient_name,
-        "recipient_role": certificate.recipient_role,
-        "certificate_id": certificate.certificate_id,
-        "certificate_number": certificate.certificate_id,
-        "team_id": certificate.team_code,
-    })
-    if certificate.template_snapshot_json:
-        positions_json = snapshot.get("positions_json", "{}")
-    else:
-        positions_json = certificate.template.positions_json if certificate.template else "{}"
-    try:
-        saved_positions = json.loads(positions_json or "{}")
-    except (TypeError, json.JSONDecodeError):
-        abort(503, description="The saved Word field mappings are invalid.")
-    if not isinstance(saved_positions, dict):
-        abort(503, description="The saved Word field mappings are invalid.")
     verification_url = certificate_verification_url(certificate.certificate_id)
     return send_file(
         merged_certificate_docx(
@@ -7279,7 +7891,7 @@ def download_certificate_word(certificate_id):
             "wordprocessingml.document"
         ),
         as_attachment=True,
-        download_name=f"{certificate.certificate_id}.docx",
+        download_name=certificate_download_filename(certificate, "docx"),
     )
 
 @main.route("/admin/announcements", methods=["GET","POST"])

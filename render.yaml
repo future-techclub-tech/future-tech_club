@@ -1,10 +1,10 @@
 services:
   - type: web
     name: future-tech-innovision-2026
-    runtime: python
+    runtime: docker
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile - run:app
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /healthz
     disk:
       name: future-tech-uploads
@@ -27,6 +27,16 @@ services:
           property: connectionString
       - key: UPLOAD_FOLDER
         value: /var/data/uploads
+      - key: ONLYOFFICE_SERVER_URL
+        fromService:
+          type: web
+          name: future-tech-onlyoffice
+          property: host
+      - key: ONLYOFFICE_JWT_SECRET
+        fromService:
+          type: web
+          name: future-tech-onlyoffice
+          envVarKey: JWT_SECRET
       - key: TASK_EMAIL_SMTP_HOST
         sync: false
       - key: TASK_EMAIL_SMTP_PORT
@@ -37,6 +47,19 @@ services:
         sync: false
       - key: TASK_EMAIL_FROM
         value: future-techclub@orchidengg.ac.in
+
+  - type: web
+    name: future-tech-onlyoffice
+    runtime: image
+    image:
+      url: docker.io/onlyoffice/documentserver:latest
+    plan: 2c-4g
+    healthCheckPath: /healthcheck
+    envVars:
+      - key: JWT_ENABLED
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
 
 databases:
   - name: future-tech-innovision-db

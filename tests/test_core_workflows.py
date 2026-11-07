@@ -18,7 +18,8 @@ from PIL import Image
 
 from app import create_app, ensure_member_schema, seed_initial_data
 from app.extensions import db
-from app.routes import certificate_verification_url
+from app.onlyoffice import decode_onlyoffice_token, encode_onlyoffice_token
+from app.routes import certificate_verification_url, merged_certificate_docx
 from app.models import (
     AdminEvaluation,
     AdminChatMessage,
@@ -3610,6 +3611,9 @@ class CoreWorkflowTests(unittest.TestCase):
         self.assertEqual(certificate_page.status_code, 200)
         self.assertIn(b'name="template_docx"', certificate_page.data)
         self.assertIn(b"Word source file (optional)", certificate_page.data)
+        self.assertIn(b"data-background-picker", certificate_page.data)
+        self.assertIn(b"data-separate-background-toggle", certificate_page.data)
+        self.assertIn(b"data-use-separate-background", certificate_page.data)
         self.assertIn(b"data-add-text", certificate_page.data)
         self.assertIn(b"data-text-color", certificate_page.data)
         self.assertIn(b"data-field-style-target", certificate_page.data)
@@ -3661,6 +3665,11 @@ class CoreWorkflowTests(unittest.TestCase):
                             "italic": True,
                         },
                     },
+                    "docx_text_mappings": [{
+                        "paragraph_index": 2,
+                        "text": "This certificate is presented to",
+                        "field": "recipient_role",
+                    }],
                     "cover_zones": [{
                         "x": 20,
                         "y": 20,
@@ -3928,6 +3937,8 @@ class CoreWorkflowTests(unittest.TestCase):
         merged_xml = merged_docx.read("word/document.xml")
         self.assertIn(b"Courier New", merged_xml)
         self.assertIn(b"AA1122", merged_xml)
+        self.assertIn(b"Project Leader", merged_xml)
+        self.assertNotIn(b"This certificate is presented to", merged_xml)
         self.assertIn(b"<w:b w:val=\"1\"", merged_xml)
         self.assertIn(b"<w:i w:val=\"1\"", merged_xml)
         word_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -4054,6 +4065,287 @@ class CoreWorkflowTests(unittest.TestCase):
         self.client.post(f"/admin/certificates/{certificate_db_id}/delete")
         with self.app.app_context():
             self.assertIsNone(db.session.get(Certificate, certificate_db_id))
+
+    def test_word_only_certificate_template_creates_pdf_and_renders_certificate(self):
+            self.assertEqual(self.login("admin", "Admin@12345!").status_code, 302)
+            starter = self.client.get(
+                "/admin/certificate-template-starter"
+                "?type_name=Certificate%20of%20Participation"
+            )
+            self.assertEqual(starter.status_code, 200)
+
+            pdf_document = pymupdf.open()
+            pdf_document.new_page(width=842, height=595)
+            rendered_pdf = pdf_document.tobytes()
+            pdf_document.close()
+
+            with patch(
+                "app.routes.convert_certificate_docx_to_pdf",
+                return_value=rendered_pdf,
+            ) as convert_docx:
+                preview = self.client.post(
+                    "/admin/certificate-template/docx-preview-pdf",
+                    data={
+                        "template_docx": (
+                            io.BytesIO(starter.data),
+                            "preview.docx",
+                        ),
+                    },
+                    content_type="multipart/form-data",
+                )
+                self.assertEqual(preview.status_code, 200)
+                self.assertEqual(preview.mimetype, "application/pdf")
+                self.assertTrue(preview.data.startswith(b"%PDF"))
+                self.assertEqual(
+                    convert_docx.call_args.args[0],
+                    starter.data,
+                )
+
+                created = self.client.post(
+                    "/admin/certificates",
+                    data={
+                        "action": "template",
+                        "event_name": "FUTURE-TECH INNOVISION 2026",
+                        "event_date": "7 November 2026",
+                        "event_venue": "N K Orchid College",
+                        "type_name": "Certificate of Participation",
+                        "recipient_role": "team_member",
+                        "positions_json": "{}",
+                        "template_docx": (
+                            io.BytesIO(starter.data),
+                            "word-only.docx",
+                        ),
+                    },
+                    content_type="multipart/form-data",
+                )
+                self.assertEqual(created.status_code, 302, created.get_data(as_text=True))
+
+                with self.app.app_context():
+                    template = CertificateTemplate.query.one()
+                    self.assertTrue(template.background_file.endswith(".pdf"))
+                    self.assertTrue(template.document_file.endswith(".docx"))
+                    positions = json.loads(template.positions_json)
+                    self.assertTrue(positions["docx_pdf_primary"])
+                    template_id = template.id
+                    certificate_type_id = template.type_id
+                    certificate = Certificate(
+                        certificate_id="FTI26-WORDONLY-TEST",
+                        type_id=certificate_type_id,
+                        template_id=template_id,
+                        recipient_name="Word Only Recipient",
+                        recipient_role="Team Member",
+                        team_code="FT_01",
+                        fields_json=json.dumps({
+                            "event_name": "FUTURE-TECH INNOVISION 2026",
+                        }),
+                        dispatch_status="dispatched",
+                        template_snapshot_json=json.dumps({
+                            "background_file": template.background_file,
+                            "document_file": template.document_file,
+                            "positions_json": template.positions_json,
+                            "page_width": template.page_width,
+                            "page_height": template.page_height,
+                        }),
+                    )
+                    db.session.add(certificate)
+                    db.session.commit()
+
+                download = self.client.get(
+                    "/certificate/FTI26-WORDONLY-TEST/download"
+                )
+                self.assertEqual(download.status_code, 200)
+                self.assertEqual(download.mimetype, "application/pdf")
+                self.assertEqual(download.data, rendered_pdf)
+
+    def test_merged_word_certificate_keeps_opc_default_namespaces(self):
+        self.assertEqual(self.login("admin", "Admin@12345!").status_code, 302)
+        starter = self.client.get(
+            "/admin/certificate-template-starter"
+            "?type_name=Certificate%20of%20Participation"
+        )
+        self.assertEqual(starter.status_code, 200)
+        merged = merged_certificate_docx(
+            io.BytesIO(starter.data),
+            {
+                "recipient_name": "Test Recipient",
+                "certificate_id": "FTI26-MERGE-TEST",
+            },
+            "https://example.test/certificates/FTI26-MERGE-TEST",
+        )
+        with zipfile.ZipFile(merged) as archive:
+            relationships = archive.read("word/_rels/document.xml.rels")
+            content_types = archive.read("[Content_Types].xml")
+        self.assertIn(
+            b'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"',
+            relationships,
+        )
+        self.assertIn(
+            b'xmlns="http://schemas.openxmlformats.org/package/2006/content-types"',
+            content_types,
+        )
+        self.assertNotIn(b"ns0:", relationships)
+        self.assertNotIn(b"ns0:", content_types)
+
+    def test_onlyoffice_editor_saves_word_and_invalidates_approval(self):
+        self.assertEqual(self.login("admin", "Admin@12345!").status_code, 302)
+        starter = self.client.get(
+            "/admin/certificate-template-starter"
+            "?type_name=Certificate%20of%20Participation"
+        )
+        self.assertEqual(starter.status_code, 200)
+        pdf_document = pymupdf.open()
+        pdf_document.new_page(width=842, height=595)
+        rendered_pdf = pdf_document.tobytes()
+        pdf_document.close()
+        with patch(
+            "app.routes.convert_certificate_docx_to_pdf",
+            return_value=rendered_pdf,
+        ):
+            created = self.client.post(
+                "/admin/certificates",
+                data={
+                    "action": "template",
+                    "event_name": "FUTURE-TECH INNOVISION 2026",
+                    "event_date": "7 November 2026",
+                    "event_venue": "N K Orchid College",
+                    "type_name": "Certificate of Participation",
+                    "recipient_role": "team_member",
+                    "positions_json": "{}",
+                    "template_docx": (
+                        io.BytesIO(starter.data),
+                        "onlyoffice-word.docx",
+                    ),
+                },
+                content_type="multipart/form-data",
+            )
+        self.assertEqual(created.status_code, 302)
+        with self.app.app_context():
+            template = CertificateTemplate.query.one()
+            template_id = template.id
+            old_document_file = template.document_file
+            old_background_file = template.background_file
+            db.session.add(Certificate(
+                certificate_id="FTI26-ONLYOFFICE-HISTORY",
+                type_id=template.type_id,
+                template_id=template.id,
+                recipient_name="Historical Recipient",
+                recipient_role="Team Member",
+                dispatch_status="dispatched",
+            ))
+            db.session.commit()
+        self.assertEqual(
+            self.client.post(
+                f"/admin/certificate-templates/{template_id}/approve"
+            ).status_code,
+            302,
+        )
+        certificate_page = self.client.get("/admin/certificates")
+        self.assertEqual(certificate_page.status_code, 200)
+        self.assertIn(
+            b"The in-page Word editor will be available",
+            certificate_page.data,
+        )
+
+        previous_server_url = self.app.config.get("ONLYOFFICE_SERVER_URL", "")
+        previous_secret = self.app.config.get("ONLYOFFICE_JWT_SECRET", "")
+        self.app.config.update(
+            ONLYOFFICE_SERVER_URL="https://docs.example.test",
+            ONLYOFFICE_JWT_SECRET="a-test-onlyoffice-secret",
+        )
+        try:
+            config_response = self.client.get(
+                f"/admin/certificate-templates/{template_id}/editor-config"
+            )
+            self.assertEqual(config_response.status_code, 200)
+            editor = config_response.get_json()
+            editor_config = editor["config"]
+            token_payload = decode_onlyoffice_token(
+                editor_config["token"], "a-test-onlyoffice-secret"
+            )
+            self.assertEqual(token_payload["document"]["key"], editor_config["document"]["key"])
+            self.assertEqual(
+                editor_config["document"]["url"].split("/", 3)[2],
+                "localhost",
+            )
+            signed_document = self.client.get(
+                editor_config["document"]["url"].split("localhost", 1)[1]
+            )
+            self.assertEqual(signed_document.status_code, 200)
+            self.assertTrue(signed_document.data.startswith(b"PK"))
+            signed_document.close()
+
+            callback_body = {
+                "key": editor_config["document"]["key"],
+                "status": 2,
+                "url": "https://docs.example.test/edited-certificate.docx",
+            }
+            callback_token = encode_onlyoffice_token(
+                callback_body, "a-test-onlyoffice-secret"
+            )
+            rejected_callback = self.client.post(
+                f"/onlyoffice/certificate-templates/{template_id}/callback"
+                f"?key={callback_body['key']}",
+                json=callback_body,
+                headers={"Authorization": "Bearer invalid-token"},
+            )
+            self.assertEqual(rejected_callback.status_code, 403)
+            download = MagicMock()
+            download.__enter__.return_value = download
+            download.geturl.return_value = callback_body["url"]
+            download.read.return_value = starter.data
+            office_opener = MagicMock()
+            office_opener.open.return_value = download
+            with (
+                patch(
+                    "app.routes.urllib.request.build_opener",
+                    return_value=office_opener,
+                ),
+                patch(
+                    "app.routes.convert_certificate_docx_to_pdf",
+                    return_value=rendered_pdf,
+                ),
+            ):
+                callback_response = self.client.post(
+                    f"/onlyoffice/certificate-templates/{template_id}/callback"
+                    f"?key={callback_body['key']}",
+                    json=callback_body,
+                    headers={"Authorization": f"Bearer {callback_token}"},
+                )
+            self.assertEqual(callback_response.status_code, 200)
+            self.assertEqual(callback_response.get_json(), {"error": 0})
+            with self.app.app_context():
+                template = db.session.get(CertificateTemplate, template_id)
+                self.assertFalse(template.approved)
+                self.assertNotEqual(template.document_file, editor["revision"])
+                historical = Certificate.query.filter_by(
+                    certificate_id="FTI26-ONLYOFFICE-HISTORY"
+                ).one()
+                snapshot = json.loads(historical.template_snapshot_json)
+                self.assertEqual(snapshot["document_file"], old_document_file)
+                self.assertEqual(snapshot["background_file"], old_background_file)
+                self.assertTrue(
+                    os.path.isfile(
+                        os.path.join(
+                            self.app.config["UPLOAD_FOLDER"],
+                            "certificate_templates",
+                            old_document_file,
+                        )
+                    )
+                )
+                self.assertTrue(
+                    os.path.isfile(
+                        os.path.join(
+                            self.app.config["UPLOAD_FOLDER"],
+                            "certificate_templates",
+                            template.document_file,
+                        )
+                    )
+                )
+        finally:
+            self.app.config.update(
+                ONLYOFFICE_SERVER_URL=previous_server_url,
+                ONLYOFFICE_JWT_SECRET=previous_secret,
+            )
 
     def test_deleting_template_preserves_issued_certificate_download(self):
         image_buffer = io.BytesIO()
@@ -4727,6 +5019,10 @@ class CoreWorkflowTests(unittest.TestCase):
         self.assertIn(b"Certificate of Participation", member_page.data)
         downloaded = member_client.get(f"/certificate/{certificate_id}/download")
         self.assertEqual(downloaded.status_code, 200)
+        self.assertIn(
+            "filename=ZIPSTUDENT001.pdf",
+            downloaded.headers["Content-Disposition"],
+        )
         with pymupdf.open(stream=downloaded.data, filetype="pdf") as stamped_pdf:
             page = stamped_pdf[0]
             self.assertIn(certificate_id, page.get_text())
@@ -4766,6 +5062,10 @@ class CoreWorkflowTests(unittest.TestCase):
             f"/certificate/{leader_certificate_id}/download"
         )
         self.assertEqual(leader_download.status_code, 200)
+        self.assertIn(
+            "filename=ZIPLEADER001.pdf",
+            leader_download.headers["Content-Disposition"],
+        )
         with pymupdf.open(
             stream=leader_download.data,
             filetype="pdf",

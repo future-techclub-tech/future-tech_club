@@ -47,6 +47,16 @@ class Config:
         os.getenv("CERTIFICATE_PUBLIC_BASE_URL", "").strip().rstrip("/")
         or os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
     )
+    ONLYOFFICE_SERVER_URL = os.getenv("ONLYOFFICE_SERVER_URL", "").strip().rstrip("/")
+    if ONLYOFFICE_SERVER_URL and not ONLYOFFICE_SERVER_URL.startswith(
+        ("http://", "https://")
+    ):
+        ONLYOFFICE_SERVER_URL = "https://" + ONLYOFFICE_SERVER_URL
+    ONLYOFFICE_JWT_SECRET = os.getenv("ONLYOFFICE_JWT_SECRET", "").strip()
+    if APP_ENV == "production" and ONLYOFFICE_SERVER_URL and not ONLYOFFICE_JWT_SECRET:
+        raise RuntimeError(
+            "ONLYOFFICE_JWT_SECRET is required when the document editor is enabled."
+        )
     TASK_EMAIL_SMTP_HOST = os.getenv("TASK_EMAIL_SMTP_HOST", "")
     TASK_EMAIL_SMTP_PORT = int(os.getenv("TASK_EMAIL_SMTP_PORT", "587"))
     TASK_EMAIL_SMTP_USERNAME = os.getenv("TASK_EMAIL_SMTP_USERNAME", "")

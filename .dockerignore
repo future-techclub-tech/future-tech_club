@@ -1,0 +1,15 @@
+.git
+.vscode
+.env
+.env.*
+!.env.example
+*.db
+*.docx
+instance/
+uploads/
+data/student_roster.csv
+tests/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
